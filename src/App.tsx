@@ -35,6 +35,30 @@ export default function App() {
     return INITIAL_ARTICLES;
   });
 
+  // Завантаження статей із бази даних
+  useEffect(() => {
+    const fetchArticlesFromDb = async () => {
+      try {
+        const res = await fetch('/api/articles');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            setArticles(data);
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+              console.error(e);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Backend unavailable, using cached articles:', err);
+      }
+    };
+
+    fetchArticlesFromDb();
+  }, []);
+
   // Синхронізація з навігацією браузера
   useEffect(() => {
     const handleLocationChange = () => {
@@ -74,7 +98,8 @@ export default function App() {
     }
   };
 
-  const handleSaveArticle = (article: Article) => {
+  const handleSaveArticle = async (article: Article) => {
+    // Оптимістичне збереження
     setArticles((prev) => {
       const exists = prev.some((a) => a.id === article.id);
       const updated = exists
@@ -87,9 +112,21 @@ export default function App() {
       }
       return updated;
     });
+
+    // Збереження у базу даних Vercel Postgres
+    try {
+      await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(article),
+      });
+    } catch (e) {
+      console.error('Failed to sync article with database:', e);
+    }
   };
 
-  const handleDeleteArticle = (id: string) => {
+  const handleDeleteArticle = async (id: string) => {
+    // Оптимістичне видалення
     setArticles((prev) => {
       const updated = prev.filter((a) => a.id !== id);
       try {
@@ -101,6 +138,15 @@ export default function App() {
     });
     if (selectedArticleId === id) {
       setSelectedArticleId(null);
+    }
+
+    // Видалення з бази даних Vercel Postgres
+    try {
+      await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.error('Failed to delete article from database:', e);
     }
   };
 
