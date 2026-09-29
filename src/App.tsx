@@ -24,8 +24,10 @@ export default function App() {
         </button>
       </header>
 
-      {/* Центральна частина залишається чистою */}
-      <main className="flex-1" />
+      {/* Центральна частина (body) з градієнтним контейнером унизу */}
+      <main className="flex-1 flex flex-col justify-end">
+        <div className="w-full h-16 sm:h-24 bg-gradient-to-b from-white to-neutral-100" />
+      </main>
 
       {/* Футер */}
       <footer className="w-full bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12">
