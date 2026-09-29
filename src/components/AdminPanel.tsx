@@ -1,5 +1,16 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Trash2, Edit3, Eye, Check, ExternalLink } from 'lucide-react';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  Edit3,
+  Eye,
+  EyeOff,
+  Check,
+  ExternalLink,
+  Globe,
+  SlidersHorizontal,
+} from 'lucide-react';
 import { Article } from '../types';
 
 interface AdminPanelProps {
@@ -22,6 +33,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [notification, setNotification] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'hidden'>('all');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -57,6 +70,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsCreatingNew(false);
   };
 
+  // Швидке перемикання видимості статті (опублікована / прихована)
+  const handleToggleVisibility = async (article: Article) => {
+    const isCurrentlyPublished =
+      article.published === true || String(article.published) === 'true' || (article.published as any) === 1;
+    const nextPublished = !isCurrentlyPublished;
+
+    setTogglingId(article.id);
+    try {
+      await onSaveArticle({
+        ...article,
+        published: nextPublished,
+      });
+      showNotification(
+        nextPublished
+          ? `Статтю «${article.title}» опубліковано на сайті.`
+          : `Статтю «${article.title}» приховано з сайту.`
+      );
+    } catch (err: any) {
+      console.error('Toggle visibility error:', err);
+      showNotification(`Помилка: ${err.message || 'Не вдалося змінити видимість'}`);
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingArticle || !editingArticle.title?.trim()) {
@@ -66,6 +104,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     setIsSaving(true);
     setErrorMsg(null);
+
+    const isPub = editingArticle.published !== false && String(editingArticle.published) !== 'false';
 
     const finalArticle: Article = {
       id: editingArticle.id || Date.now().toString(),
@@ -77,12 +117,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       coverImage: editingArticle.coverImage?.trim() || undefined,
       date: editingArticle.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
       readTime: editingArticle.readTime || '3 хв читання',
-      published: editingArticle.published !== false,
+      published: isPub,
     };
 
     try {
       await onSaveArticle(finalArticle);
-      showNotification(isCreatingNew ? 'Статтю успішно опубліковано у базі даних!' : 'Зміни успішно збережено!');
+      showNotification(
+        isCreatingNew
+          ? isPub
+            ? 'Статтю успішно створено та опубліковано на сайті!'
+            : 'Статтю збережено у чернетках (приховано)!'
+          : isPub
+          ? 'Зміни збережено (стаття активна на сайті)!'
+          : 'Зміни збережено (стаття прихована від читачів)!'
+      );
       setEditingArticle(null);
       setIsCreatingNew(false);
     } catch (err: any) {
@@ -92,6 +140,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsSaving(false);
     }
   };
+
+  const publishedCount = articles.filter(
+    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
+  ).length;
+  const hiddenCount = articles.length - publishedCount;
+
+  const filteredArticles = articles.filter((a) => {
+    const isPub = a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
+    if (filterStatus === 'published') return isPub;
+    if (filterStatus === 'hidden') return !isPub;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-white text-black font-sans flex flex-col">
@@ -119,28 +179,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={onExitAdmin}
-            className="text-xs sm:text-sm text-neutral-500 hover:text-black transition-colors px-3 py-1.5 cursor-pointer flex items-center gap-1.5"
+          <a
+            href="/"
+            onClick={(e) => {
+              e.preventDefault();
+              onExitAdmin();
+            }}
+            className="text-xs text-neutral-500 hover:text-black flex items-center gap-1.5 transition-colors"
           >
-            <span>Переглянути сайт</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </button>
-          {!editingArticle && (
-            <button
-              onClick={handleStartCreate}
-              className="flex items-center gap-2 bg-black text-white px-4 py-2 text-xs sm:text-sm tracking-wide hover:bg-neutral-800 transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Нова стаття</span>
-            </button>
-          )}
+            <Globe className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Відкрити сайт</span>
+          </a>
         </div>
       </header>
 
-      {/* Повідомлення про успіх */}
+      {/* Спливаюче сповіщення */}
       {notification && (
-        <div className="bg-neutral-900 text-white text-xs sm:text-sm py-2 px-4 text-center flex items-center justify-center gap-2">
+        <div className="fixed bottom-6 right-6 z-50 bg-black text-white text-xs sm:text-sm px-4 py-3 rounded shadow-lg flex items-center gap-2 animate-fade-in">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{notification}</span>
         </div>
@@ -153,17 +208,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between pb-6 border-b border-neutral-100 mb-8">
               <div>
-                <h1 className="text-2xl font-serif font-medium text-black">
-                  {isCreatingNew ? 'Створення нової статті' : 'Редагування статті'}
+                <h1 className="text-xl sm:text-2xl font-serif font-medium text-black">
+                  {isCreatingNew ? 'Нова стаття' : 'Редагування статті'}
                 </h1>
                 <p className="text-xs text-neutral-500 mt-1">
-                  Заповніть поля статті. Після збереження вона миттєво з'явиться на головному екрані сайту.
+                  Заповніть форму для збереження статті у базі даних Neon Postgres
                 </p>
               </div>
               <button
                 type="button"
                 onClick={handleCancel}
-                className="text-xs text-neutral-500 hover:text-black transition-colors"
+                className="text-xs sm:text-sm text-neutral-500 hover:text-black transition-colors cursor-pointer"
               >
                 Скасувати
               </button>
@@ -185,15 +240,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Мета-дані: Рубрика, Автор, Час читання */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              {/* Метадані статті (Рубрика, Автор, Час читання) */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2">
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
                     Рубрика / Тема
                   </label>
                   <input
                     type="text"
-                    placeholder="напр. Філософія, Культура"
+                    placeholder="напр. Філософія, Архітектура"
                     value={editingArticle.category || ''}
                     onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value })}
                     className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
@@ -256,7 +311,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Короткий опис / лід */}
               <div className="pt-2">
                 <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  Короткий опис (для списку на головній)
+                  Короткий опис (для картки на головній)
                 </label>
                 <textarea
                   rows={2}
@@ -282,23 +337,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Статус публікації */}
-              <div className="pt-2 flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  id="publishedCheck"
-                  checked={editingArticle.published !== false}
-                  onChange={(e) => setEditingArticle({ ...editingArticle, published: e.target.checked })}
-                  className="w-4 h-4 accent-black cursor-pointer"
-                />
-                <label htmlFor="publishedCheck" className="text-sm cursor-pointer select-none text-neutral-700">
-                  Опублікувати на сайті (стаття буде видима читачам на головній сторінці)
+              {/* Перемикач видимості статті: Опубліковано або Приховано */}
+              <div className="pt-2">
+                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2.5">
+                  Видимість статті на сайті
                 </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingArticle({ ...editingArticle, published: true })}
+                    className={`p-4 border text-left rounded transition-all cursor-pointer flex items-start gap-3.5 ${
+                      editingArticle.published !== false
+                        ? 'border-black bg-neutral-50 shadow-xs'
+                        : 'border-neutral-200 hover:border-neutral-300 bg-white text-neutral-600'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0 mt-0.5">
+                      {editingArticle.published !== false && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-black" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Eye className="w-4 h-4 text-emerald-600" />
+                        <span className="text-sm font-medium text-black">Опублікована</span>
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Стаття одразу відображається читачам на головній сторінці сайту.
+                      </p>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditingArticle({ ...editingArticle, published: false })}
+                    className={`p-4 border text-left rounded transition-all cursor-pointer flex items-start gap-3.5 ${
+                      editingArticle.published === false
+                        ? 'border-black bg-neutral-50 shadow-xs'
+                        : 'border-neutral-200 hover:border-neutral-300 bg-white text-neutral-600'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0 mt-0.5">
+                      {editingArticle.published === false && (
+                        <div className="w-2.5 h-2.5 rounded-full bg-black" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <EyeOff className="w-4 h-4 text-neutral-500" />
+                        <span className="text-sm font-medium text-black">Прихована (чернетка)</span>
+                      </div>
+                      <p className="text-xs text-neutral-500 mt-1">
+                        Зберігається у базі даних, але залишається невидимою для відвідувачів.
+                      </p>
+                    </div>
+                  </button>
+                </div>
               </div>
 
               {/* Повідомлення про помилку збереження */}
               {errorMsg && (
-                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded">
+                <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded">
                   {errorMsg}
                 </div>
               )}
@@ -321,21 +420,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   {isSaving && (
                     <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   )}
-                  <span>{isSaving ? 'Збереження...' : isCreatingNew ? 'Опублікувати статтю' : 'Зберегти зміни'}</span>
+                  <span>
+                    {isSaving
+                      ? 'Збереження...'
+                      : isCreatingNew
+                      ? editingArticle.published === false
+                        ? 'Зберегти як приховану'
+                        : 'Опублікувати статтю'
+                      : editingArticle.published === false
+                      ? 'Зберегти (приховати)'
+                      : 'Зберегти зміни'}
+                  </span>
                 </button>
               </div>
             </form>
           </div>
         ) : (
-          /* Список наявних статей */
+          /* Список статей у панелі */
           <div>
+            {/* Заголовок та кнопка створення */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-neutral-100 mb-6 gap-4">
               <div>
                 <h1 className="text-xl sm:text-2xl font-serif font-medium text-black">
                   Редактор статей
                 </h1>
                 <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-                  Керування матеріалами журналу The Impart ({articles.length} {articles.length === 1 ? 'стаття' : 'статей'})
+                  Керування матеріалами журналу The Impart ({articles.length}{' '}
+                  {articles.length === 1 ? 'матеріал' : 'матеріалів'})
                 </p>
               </div>
               <button
@@ -346,6 +457,61 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <span>Створити нову статтю</span>
               </button>
             </div>
+
+            {/* Вкладки фільтрів видимості: Всі, Опубліковані, Приховані */}
+            {articles.length > 0 && (
+              <div className="flex items-center gap-2 pb-4 mb-4 border-b border-neutral-100 overflow-x-auto">
+                <button
+                  onClick={() => setFilterStatus('all')}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'all'
+                      ? 'bg-black text-white font-medium'
+                      : 'bg-neutral-100 text-neutral-600 hover:text-black hover:bg-neutral-200'
+                  }`}
+                >
+                  <span>Всі</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    filterStatus === 'all' ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {articles.length}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setFilterStatus('published')}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'published'
+                      ? 'bg-emerald-700 text-white font-medium'
+                      : 'bg-neutral-100 text-neutral-600 hover:text-emerald-700 hover:bg-emerald-50'
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  <span>Опубліковані</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    filterStatus === 'published' ? 'bg-emerald-800 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {publishedCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setFilterStatus('hidden')}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'hidden'
+                      ? 'bg-neutral-800 text-white font-medium'
+                      : 'bg-neutral-100 text-neutral-600 hover:text-black hover:bg-neutral-200'
+                  }`}
+                >
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span>Приховані</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    filterStatus === 'hidden' ? 'bg-neutral-700 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {hiddenCount}
+                  </span>
+                </button>
+              </div>
+            )}
 
             {articles.length === 0 ? (
               <div className="text-center py-20 border border-dashed border-neutral-200">
@@ -358,78 +524,162 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   Створити першу публікацію
                 </button>
               </div>
+            ) : filteredArticles.length === 0 ? (
+              <div className="text-center py-16 border border-dashed border-neutral-200">
+                <p className="text-neutral-500 text-sm">
+                  {filterStatus === 'hidden'
+                    ? 'Прихованих статей немає. Усі статті опубліковані на сайті.'
+                    : 'Опублікованих статей немає.'}
+                </p>
+                <button
+                  onClick={() => setFilterStatus('all')}
+                  className="mt-3 text-xs text-black underline underline-offset-4 cursor-pointer"
+                >
+                  Показати всі статті
+                </button>
+              </div>
             ) : (
               <div className="divide-y divide-neutral-100">
-                {articles.map((art) => (
-                  <div
-                    key={art.id}
-                    className="py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group hover:bg-neutral-50/50 px-2 -mx-2 transition-colors rounded"
-                  >
-                    <div className="flex items-start gap-4">
-                      {art.coverImage && (
-                        <img
-                          src={art.coverImage}
-                          alt={art.title}
-                          className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded shrink-0 bg-neutral-100"
-                        />
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                            {art.category}
-                          </span>
-                          <span className="text-neutral-300">•</span>
-                          <span className="text-xs text-neutral-400">{art.date}</span>
-                          {!art.published && (
-                            <span className="text-[10px] bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded uppercase tracking-wider">
-                              Чернетка
-                            </span>
-                          )}
-                        </div>
-                        <h2 className="text-base sm:text-lg font-serif font-medium text-black group-hover:text-neutral-700 transition-colors">
-                          {art.title}
-                        </h2>
-                        {art.excerpt && (
-                          <p className="text-xs text-neutral-500 line-clamp-1 mt-1 max-w-xl">
-                            {art.excerpt}
-                          </p>
+                {filteredArticles.map((art) => {
+                  const isPub =
+                    art.published === true || String(art.published) === 'true' || (art.published as any) === 1;
+                  const isToggling = togglingId === art.id;
+
+                  return (
+                    <div
+                      key={art.id}
+                      className={`py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group px-3 -mx-3 transition-colors rounded ${
+                        isPub
+                          ? 'hover:bg-neutral-50/60'
+                          : 'bg-neutral-50/50 hover:bg-neutral-100/60 border-l-2 border-neutral-300'
+                      }`}
+                    >
+                      <div className="flex items-start gap-4">
+                        {art.coverImage ? (
+                          <img
+                            src={art.coverImage}
+                            alt={art.title}
+                            className={`w-16 h-16 sm:w-20 sm:h-20 object-cover rounded shrink-0 bg-neutral-100 ${
+                              !isPub ? 'grayscale opacity-75' : ''
+                            }`}
+                          />
+                        ) : (
+                          <div
+                            className={`w-16 h-16 sm:w-20 sm:h-20 rounded shrink-0 flex items-center justify-center text-xs font-serif ${
+                              isPub ? 'bg-neutral-100 text-neutral-400' : 'bg-neutral-200 text-neutral-500'
+                            }`}
+                          >
+                            The Impart
+                          </div>
                         )}
-                        <p className="text-[11px] text-neutral-400 mt-1">
-                          {art.author} — {art.readTime}
-                        </p>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            {/* Статус видимості */}
+                            {isPub ? (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                Опубліковано
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-neutral-600 bg-neutral-200/70 px-2 py-0.5 rounded">
+                                <EyeOff className="w-3 h-3 text-neutral-500" />
+                                Приховано
+                              </span>
+                            )}
+
+                            <span className="text-neutral-300">•</span>
+                            <span className="text-[11px] uppercase tracking-wider text-neutral-500">
+                              {art.category}
+                            </span>
+                            <span className="text-neutral-300">•</span>
+                            <span className="text-xs text-neutral-400">{art.date}</span>
+                          </div>
+
+                          <h2
+                            className={`text-base sm:text-lg font-serif font-medium transition-colors ${
+                              isPub ? 'text-black group-hover:text-neutral-700' : 'text-neutral-600'
+                            }`}
+                          >
+                            {art.title}
+                          </h2>
+                          {art.excerpt && (
+                            <p className="text-xs text-neutral-500 line-clamp-1 mt-1 max-w-xl">
+                              {art.excerpt}
+                            </p>
+                          )}
+                          <p className="text-[11px] text-neutral-400 mt-1">
+                            {art.author} — {art.readTime}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Панель дій над статтею */}
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                        {/* Кнопка швидкого приховування / показу */}
+                        <button
+                          onClick={() => handleToggleVisibility(art)}
+                          disabled={isToggling}
+                          className={`p-2 rounded transition-colors cursor-pointer flex items-center gap-1.5 text-xs ${
+                            isPub
+                              ? 'text-neutral-500 hover:text-amber-700 hover:bg-amber-50'
+                              : 'text-neutral-600 hover:text-emerald-700 hover:bg-emerald-50'
+                          } disabled:opacity-50`}
+                          title={
+                            isPub
+                              ? 'Приховати статтю з сайту (перевести в чернетки)'
+                              : 'Опублікувати статтю на сайті'
+                          }
+                        >
+                          {isToggling ? (
+                            <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
+                          ) : isPub ? (
+                            <>
+                              <EyeOff className="w-4 h-4" />
+                              <span className="hidden md:inline">Сховати</span>
+                            </>
+                          ) : (
+                            <>
+                              <Eye className="w-4 h-4 text-emerald-600" />
+                              <span className="hidden md:inline text-emerald-700 font-medium">Показати</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Перегляд на сайті */}
+                        <button
+                          onClick={() => onViewArticleOnSite(art.id)}
+                          className="p-2 text-neutral-500 hover:text-black hover:bg-neutral-100 rounded transition-colors cursor-pointer"
+                          title="Переглянути статтю"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </button>
+
+                        {/* Редагування */}
+                        <button
+                          onClick={() => handleStartEdit(art)}
+                          className="p-2 text-neutral-500 hover:text-black hover:bg-neutral-100 rounded transition-colors cursor-pointer"
+                          title="Редагувати статтю"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+
+                        {/* Видалення */}
+                        <button
+                          onClick={() => {
+                            if (confirm(`Видалити статтю «${art.title}» назавжди з бази даних?`)) {
+                              onDeleteArticle(art.id);
+                              showNotification('Статтю назавжди видалено.');
+                            }
+                          }}
+                          className="p-2 text-neutral-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                          title="Видалити назавжди"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                      <button
-                        onClick={() => onViewArticleOnSite(art.id)}
-                        className="p-2 text-neutral-500 hover:text-black transition-colors cursor-pointer"
-                        title="Переглянути на сайті"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleStartEdit(art)}
-                        className="p-2 text-neutral-500 hover:text-black transition-colors cursor-pointer"
-                        title="Редагувати"
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Видалити статтю «${art.title}»?`)) {
-                            onDeleteArticle(art.id);
-                            showNotification('Статтю видалено');
-                          }
-                        }}
-                        className="p-2 text-neutral-400 hover:text-red-600 transition-colors cursor-pointer"
-                        title="Видалити"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

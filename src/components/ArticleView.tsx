@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, EyeOff } from 'lucide-react';
 import { Article } from '../types';
 
 interface ArticleViewProps {
@@ -8,15 +8,26 @@ interface ArticleViewProps {
 }
 
 export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack }) => {
+  const isHidden = article.published === false || String(article.published) === 'false';
+
   return (
     <article className="max-w-3xl mx-auto px-6 sm:px-12 py-10 sm:py-16">
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-500 hover:text-black transition-colors mb-10 cursor-pointer group"
-      >
-        <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-        <span>Усі статті</span>
-      </button>
+      <div className="flex items-center justify-between mb-10">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-500 hover:text-black transition-colors cursor-pointer group"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
+          <span>Усі статті</span>
+        </button>
+
+        {isHidden && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-neutral-600 bg-neutral-100 px-3 py-1 rounded">
+            <EyeOff className="w-3.5 h-3.5 text-neutral-500" />
+            Прихована стаття (попередній перегляд)
+          </span>
+        )}
+      </div>
 
       <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-neutral-500 mb-4">
         <span>{article.category}</span>
