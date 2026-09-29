@@ -45,18 +45,21 @@ const DEFAULT_ARTICLES: Article[] = [
 const DEFAULT_NEON_URL =
   'postgresql://neondb_owner:npg_YxGNIvz6CD1r@ep-dawn-dust-b7e8cria-pooler.c-13.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
 
-// Очищення рядка підключення від випадкового знаку "=", лапок та пробілів
-export function cleanConnectionString(url?: string): string | undefined {
-  if (!url) return undefined;
-  let cleaned = url.trim();
+// Очищення рядка підключення від psql, назви змінної, лапок, пробілів та крапки з комою
+export function cleanConnectionString(raw?: string): string | undefined {
+  if (!raw) return undefined;
+  const str = raw.trim();
 
-  let prev = '';
-  while (cleaned && cleaned !== prev) {
-    prev = cleaned;
-    cleaned = cleaned.replace(/^[=\s"'\\]+/, '').replace(/[=\s"'\\]+$/, '').trim();
+  // Витягуємо безпосередньо URL підключення postgres:// або postgresql://
+  const match = str.match(/postgres(?:ql)?:\/\/[^\s"'\`]+/i);
+  if (match) {
+    let extracted = match[0].trim();
+    // Видаляємо кінцеві лапки, крапки з комою та слеші
+    extracted = extracted.replace(/[;"'\`\\]+$/, '').trim();
+    return extracted;
   }
 
-  return cleaned || undefined;
+  return undefined;
 }
 
 // Отримання клієнта Neon

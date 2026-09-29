@@ -18,6 +18,23 @@ export default async function handler(req: any, res: any) {
 
     if (req.method === 'POST' || req.method === 'PUT') {
       let body = req.body;
+
+      // Якщо тіло запиту не було автоматично розпарсено середовищем
+      if (!body && typeof req.on === 'function') {
+        body = await new Promise((resolve) => {
+          let data = '';
+          req.on('data', (chunk: any) => { data += chunk; });
+          req.on('end', () => {
+            try {
+              resolve(data ? JSON.parse(data) : {});
+            } catch {
+              resolve({});
+            }
+          });
+          req.on('error', () => resolve({}));
+        });
+      }
+
       if (typeof body === 'string') {
         try {
           body = JSON.parse(body);
