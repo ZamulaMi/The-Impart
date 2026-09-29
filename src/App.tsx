@@ -31,10 +31,11 @@ export default function App() {
 
       {/* Футер */}
       <footer className="w-full bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12">
-        <div className="flex flex-col items-start">
-          <span className="text-base sm:text-lg font-normal tracking-normal text-black font-sans select-none">
-            The Impart
-          </span>
+        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+          <div className="flex flex-col items-start">
+            <span className="text-base sm:text-lg font-normal tracking-normal text-black font-sans select-none">
+              The Impart
+            </span>
 
           <div className="mt-3.5 flex items-center gap-4 text-neutral-600">
             {/* Telegram */}
@@ -103,7 +104,15 @@ export default function App() {
             </a>
           </div>
         </div>
-      </footer>
+
+        {/* Перемикач мови з правого боку (поки без логіки бекенду) */}
+        <div className="flex items-center gap-1.5 text-xs sm:text-sm font-sans tracking-wide select-none">
+          <span className="font-semibold text-black cursor-default">UA</span>
+          <span className="text-neutral-300">/</span>
+          <span className="text-neutral-400 hover:text-black transition-colors cursor-pointer">EN</span>
+        </div>
+      </div>
+    </footer>
     </div>
   );
 }
