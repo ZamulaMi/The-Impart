@@ -1,20 +1,82 @@
-import { sql } from '@vercel/postgres';
+import { createPool, VercelPool } from '@vercel/postgres';
 import { Article } from '../src/types';
 
+// Очищення рядка підключення від випадкового знаку "=" на початку, лапок та пробілів
+export function cleanConnectionString(url?: string): string | undefined {
+  if (!url) return undefined;
+  let cleaned = url.trim();
+
+  // Видаляємо зайві лапки
+  if (
+    (cleaned.startsWith('"') && cleaned.endsWith('"')) ||
+    (cleaned.startsWith("'") && cleaned.endsWith("'"))
+  ) {
+    cleaned = cleaned.slice(1, -1).trim();
+  }
+
+  // Видаляємо випадкові знаки "=" на початку (наприклад, якщо скопіювали разом із назвою змінної)
+  while (cleaned.startsWith('=')) {
+    cleaned = cleaned.slice(1).trim();
+  }
+
+  return cleaned || undefined;
+}
+
+// Оновлюємо системні змінні середовища з очищеними значеннями
+function sanitizeEnvironment() {
+  if (process.env.POSTGRES_URL) {
+    process.env.POSTGRES_URL = cleanConnectionString(process.env.POSTGRES_URL);
+  }
+  if (process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = cleanConnectionString(process.env.DATABASE_URL);
+  }
+  if (process.env.POSTGRES_PRISMA_URL) {
+    process.env.POSTGRES_PRISMA_URL = cleanConnectionString(process.env.POSTGRES_PRISMA_URL);
+  }
+  if (process.env.POSTGRES_URL_NON_POOLING) {
+    process.env.POSTGRES_URL_NON_POOLING = cleanConnectionString(process.env.POSTGRES_URL_NON_POOLING);
+  }
+}
+
+sanitizeEnvironment();
+
+let pool: VercelPool | null = null;
 let isTableInitialized = false;
 
-// Резервне сховище у пам'яті (порожнє за замовчуванням)
+// Резервне сховище у пам'яті (тільки якщо база даних взагалі недоступна)
 let memoryArticles: Article[] = [];
+
+function getDbPool(): VercelPool | null {
+  if (pool) return pool;
+
+  sanitizeEnvironment();
+  const rawUrl = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+  const connectionString = cleanConnectionString(rawUrl);
+
+  if (!connectionString) {
+    return null;
+  }
+
+  try {
+    pool = createPool({ connectionString });
+    return pool;
+  } catch (err) {
+    console.error('Error creating Postgres pool:', err);
+    return null;
+  }
+}
 
 export async function initDb() {
   if (isTableInitialized) return;
-  if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+
+  const db = getDbPool();
+  if (!db) {
     isTableInitialized = true;
     return;
   }
 
   try {
-    await sql`
+    await db.sql`
       CREATE TABLE IF NOT EXISTS articles (
         id VARCHAR(255) PRIMARY KEY,
         title TEXT NOT NULL,
@@ -31,19 +93,21 @@ export async function initDb() {
     `;
 
     isTableInitialized = true;
+    console.log('Postgres table "articles" is ready.');
   } catch (error) {
     console.error('Failed to initialize Postgres table:', error);
   }
 }
 
 export async function getArticles(): Promise<Article[]> {
-  if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+  const db = getDbPool();
+  if (!db) {
     return memoryArticles;
   }
 
   try {
     await initDb();
-    const { rows } = await sql`
+    const { rows } = await db.sql`
       SELECT 
         id, 
         title, 
@@ -66,7 +130,8 @@ export async function getArticles(): Promise<Article[]> {
 }
 
 export async function saveArticle(article: Article): Promise<Article> {
-  if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+  const db = getDbPool();
+  if (!db) {
     const idx = memoryArticles.findIndex((a) => a.id === article.id);
     if (idx >= 0) {
       memoryArticles[idx] = article;
@@ -78,7 +143,7 @@ export async function saveArticle(article: Article): Promise<Article> {
 
   try {
     await initDb();
-    await sql`
+    await db.sql`
       INSERT INTO articles (id, title, excerpt, content, category, author, cover_image, date, read_time, published)
       VALUES (
         ${article.id}, 
@@ -106,7 +171,6 @@ export async function saveArticle(article: Article): Promise<Article> {
     return article;
   } catch (error) {
     console.error('Failed to save article to database:', error);
-    // Зберігаємо також у пам'ять, щоб дані не втратились
     const idx = memoryArticles.findIndex((a) => a.id === article.id);
     if (idx >= 0) {
       memoryArticles[idx] = article;
@@ -120,13 +184,14 @@ export async function saveArticle(article: Article): Promise<Article> {
 export async function deleteArticle(id: string): Promise<boolean> {
   memoryArticles = memoryArticles.filter((a) => a.id !== id);
 
-  if (!process.env.POSTGRES_URL && !process.env.DATABASE_URL) {
+  const db = getDbPool();
+  if (!db) {
     return true;
   }
 
   try {
     await initDb();
-    await sql`DELETE FROM articles WHERE id = ${id};`;
+    await db.sql`DELETE FROM articles WHERE id = ${id};`;
     return true;
   } catch (error) {
     console.error('Failed to delete article from database:', error);
