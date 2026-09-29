@@ -37,7 +37,7 @@ export default function App() {
               The Impart
             </span>
 
-          <div className="mt-3.5 flex items-center gap-4 text-neutral-600">
+            <div className="mt-3.5 flex items-center gap-4 text-neutral-600">
             {/* Telegram */}
             <a
               href="https://t.me"
