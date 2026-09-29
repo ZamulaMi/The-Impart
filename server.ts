@@ -12,8 +12,8 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Підключення API ендпоінту статей
-app.all('/api/articles', async (req, res) => {
+// Підключення API ендпоінту статей (з та без слешу)
+app.all(['/api/articles', '/api/articles/'], async (req, res) => {
   try {
     await articlesHandler(req, res);
   } catch (err: any) {
