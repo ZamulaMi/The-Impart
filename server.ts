@@ -8,11 +8,29 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+// Підтримка великих текстів та зображень (до 50MB)
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Підключення API ендпоінту статей
 app.all('/api/articles', async (req, res) => {
-  await articlesHandler(req, res);
+  try {
+    await articlesHandler(req, res);
+  } catch (err: any) {
+    console.error('Express /api/articles route error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message || 'Internal Server Error' });
+    }
+  }
+});
+
+// Обробка помилок парсингу JSON
+app.use((err: any, _req: any, res: any, next: any) => {
+  if (err) {
+    console.error('Express body parser error:', err);
+    return res.status(400).json({ error: err?.message || 'Invalid request body' });
+  }
+  next();
 });
 
 async function start() {

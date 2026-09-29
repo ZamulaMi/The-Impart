@@ -112,8 +112,19 @@ export default function App() {
     });
 
     if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `Помилка сервера HTTP ${res.status}`);
+      let errorDetail = `Помилка сервера HTTP ${res.status}`;
+      try {
+        const err = await res.json();
+        if (err && err.error) {
+          errorDetail = err.error;
+        }
+      } catch {
+        const text = await res.text().catch(() => '');
+        if (text && text.length < 200) {
+          errorDetail = text;
+        }
+      }
+      throw new Error(errorDetail);
     }
 
     const savedArticle = await res.json();

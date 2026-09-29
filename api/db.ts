@@ -13,7 +13,7 @@ export interface Article {
   published: boolean;
 }
 
-// Початкові статті за замовчуванням
+// Початкові статті
 const DEFAULT_ARTICLES: Article[] = [
   {
     id: '1',
@@ -41,11 +41,11 @@ const DEFAULT_ARTICLES: Article[] = [
   },
 ];
 
-// Прямий рядок підключення до бази даних Neon
-const DEFAULT_NEON_URL =
+// Пряме підключення до Neon (пул PgBouncer)
+const DEFAULT_NEON_POOLED_URL =
   'postgresql://neondb_owner:npg_YxGNIvz6CD1r@ep-dawn-dust-b7e8cria-pooler.c-13.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
 
-// Ретельне очищення рядка підключення від випадкового знаку "=", лапок та пробілів
+// Очищення рядка від "=", лапок та пробілів
 export function cleanConnectionString(url?: string): string | undefined {
   if (!url) return undefined;
   let cleaned = url.trim();
@@ -57,6 +57,19 @@ export function cleanConnectionString(url?: string): string | undefined {
   }
 
   return cleaned || undefined;
+}
+
+// Гарантуємо використання пулера (-pooler.) для Neon, оскільки createPool у @vercel/postgres вимагає саме його
+export function ensureNeonPooler(url?: string): string | undefined {
+  if (!url) return undefined;
+  if (url.includes('-pooler.')) return url;
+  if (url.includes('.neon.tech')) {
+    // Вставляємо -pooler перед першою крапкою в хості
+    return url
+      .replace(/@([a-z0-9-]+)(\.[a-z0-9-]+\.[a-z0-9-]+\.aws\.neon\.tech)/i, '@$1-pooler$2')
+      .replace(/@([a-z0-9-]+)(\.[a-z0-9-]+\.neon\.tech)/i, '@$1-pooler$2');
+  }
+  return url;
 }
 
 // Очищуємо всі відомі змінні підключення до Postgres
@@ -90,38 +103,41 @@ export function getDbPool(): VercelPool | null {
 
   sanitizeEnvironment();
 
-  // Шукаємо валідний URL серед усіх можливих змінних Vercel Postgres / Neon
+  // Пріоритет віддається пул-з'єднанням
   const candidateUrls = [
-    process.env.DATABASE_URL,
     process.env.POSTGRES_URL,
+    process.env.DATABASE_URL,
     process.env.POSTGRES_PRISMA_URL,
     process.env.POSTGRES_URL_NON_POOLING,
     process.env.DATABASE_URL_UNPOOLED,
     process.env.POSTGRES_URL_NO_SSL,
   ];
 
-  let connectionString: string | undefined;
+  let rawString: string | undefined;
   for (const candidate of candidateUrls) {
     const cleaned = cleanConnectionString(candidate);
     if (cleaned) {
-      connectionString = cleaned;
+      rawString = cleaned;
       break;
     }
   }
 
-  // Якщо рядок не знайдено, але є параметри PGUSER / PGHOST тощо
-  if (!connectionString && process.env.PGUSER && process.env.PGHOST && process.env.PGDATABASE) {
+  // Якщо рядок не знайдено, перевіряємо параметри PGUSER / PGHOST
+  if (!rawString && process.env.PGUSER && process.env.PGHOST && process.env.PGDATABASE) {
     const user = process.env.PGUSER;
     const pass = process.env.PGPASSWORD || '';
     const host = process.env.PGHOST;
     const db = process.env.PGDATABASE;
-    connectionString = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${db}?sslmode=require`;
+    rawString = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${db}?sslmode=require`;
   }
 
-  // Надійний резервний варіант — пряме підключення до наданої бази Neon
-  if (!connectionString) {
-    connectionString = DEFAULT_NEON_URL;
+  // Якщо все ще порожньо, використовуємо конфігурацію бази Neon
+  if (!rawString) {
+    rawString = DEFAULT_NEON_POOLED_URL;
   }
+
+  // Забезпечуємо пул-версію URL для @vercel/postgres
+  const connectionString = ensureNeonPooler(rawString) || rawString;
 
   try {
     pool = createPool({ connectionString });
@@ -158,7 +174,7 @@ export async function initDb() {
       );
     `;
 
-    // Перевіряємо, чи є статті. Якщо база порожня, додаємо базові статті
+    // Перевіряємо наявність записів
     const { rows } = await db.sql`SELECT count(*) as count FROM articles;`;
     if (parseInt(rows[0]?.count || '0', 10) === 0) {
       for (const a of DEFAULT_ARTICLES) {
@@ -185,6 +201,7 @@ export async function initDb() {
     console.log('Postgres table "articles" is ready.');
   } catch (error) {
     console.error('Failed to initialize Postgres table:', error);
+    pool = null; // скидаємо пул для повторного підключення
     throw error;
   }
 }
@@ -213,19 +230,20 @@ export async function getArticles(): Promise<Article[]> {
       ORDER BY created_at DESC;
     `;
     return rows.map((r: any) => ({
-      id: r.id,
-      title: r.title,
-      excerpt: r.excerpt || '',
-      content: r.content || '',
-      category: r.category || 'Загальне',
-      author: r.author || 'Редакція The Impart',
+      id: String(r.id),
+      title: String(r.title || ''),
+      excerpt: String(r.excerpt || ''),
+      content: String(r.content || ''),
+      category: String(r.category || 'Загальне'),
+      author: String(r.author || 'Редакція The Impart'),
       coverImage: r.coverImage || undefined,
-      date: r.date || '',
-      readTime: r.readTime || '3 хв читання',
+      date: String(r.date || ''),
+      readTime: String(r.readTime || '3 хв читання'),
       published: r.published === true || String(r.published) === 'true' || r.published === 1,
     }));
   } catch (error) {
     console.error('Database query error:', error);
+    pool = null;
     return DEFAULT_ARTICLES;
   }
 }
@@ -233,24 +251,34 @@ export async function getArticles(): Promise<Article[]> {
 export async function saveArticle(article: Article): Promise<Article> {
   const db = getDbPool();
   if (!db) {
-    throw new Error('База даних недоступна.');
+    throw new Error('База даних недоступна. Перевірте змінні середовища.');
   }
 
   try {
     await initDb();
-    const isPub = article.published !== false;
+    const isPub = article.published !== false && String(article.published) !== 'false';
+    const id = String(article.id || Date.now().toString());
+    const title = String(article.title || '').trim();
+    const excerpt = String(article.excerpt || '').trim();
+    const content = String(article.content || '').trim();
+    const category = String(article.category || 'Загальне').trim();
+    const author = String(article.author || 'Редакція The Impart').trim();
+    const coverImage = article.coverImage ? String(article.coverImage).trim() : null;
+    const date = String(article.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }));
+    const readTime = String(article.readTime || '3 хв читання');
+
     await db.sql`
       INSERT INTO articles (id, title, excerpt, content, category, author, cover_image, date, read_time, published)
       VALUES (
-        ${article.id}, 
-        ${article.title}, 
-        ${article.excerpt || ''}, 
-        ${article.content || ''}, 
-        ${article.category || 'Загальне'}, 
-        ${article.author || 'Редакція The Impart'}, 
-        ${article.coverImage || null}, 
-        ${article.date || ''}, 
-        ${article.readTime || '3 хв читання'}, 
+        ${id}, 
+        ${title}, 
+        ${excerpt}, 
+        ${content}, 
+        ${category}, 
+        ${author}, 
+        ${coverImage}, 
+        ${date}, 
+        ${readTime}, 
         ${isPub}
       )
       ON CONFLICT (id) DO UPDATE SET
@@ -264,11 +292,23 @@ export async function saveArticle(article: Article): Promise<Article> {
         read_time = EXCLUDED.read_time,
         published = EXCLUDED.published;
     `;
-    console.log(`Article "${article.title}" successfully saved to Postgres.`);
-    return article;
-  } catch (error) {
+    console.log(`Article "${title}" (ID: ${id}) successfully saved to Postgres.`);
+    return {
+      id,
+      title,
+      excerpt,
+      content,
+      category,
+      author,
+      coverImage: coverImage || undefined,
+      date,
+      readTime,
+      published: isPub,
+    };
+  } catch (error: any) {
     console.error('Failed to save article to database:', error);
-    throw error;
+    pool = null; // Скидаємо пул для реконнекту при наступному запиті
+    throw new Error(error?.message || 'Помилка збереження у базу даних');
   }
 }
 
@@ -280,10 +320,11 @@ export async function deleteArticle(id: string): Promise<boolean> {
 
   try {
     await initDb();
-    await db.sql`DELETE FROM articles WHERE id = ${id};`;
+    await db.sql`DELETE FROM articles WHERE id = ${String(id)};`;
     return true;
   } catch (error) {
     console.error('Failed to delete article from database:', error);
+    pool = null;
     throw error;
   }
 }
