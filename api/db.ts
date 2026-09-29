@@ -1,11 +1,10 @@
 import { sql } from '@vercel/postgres';
 import { Article } from '../src/types';
-import { INITIAL_ARTICLES } from '../src/data/initialArticles';
 
 let isTableInitialized = false;
 
-// Резервне сховище у пам'яті на випадок, якщо POSTGRES_URL ще не підключено в Vercel
-let memoryArticles: Article[] = [...INITIAL_ARTICLES];
+// Резервне сховище у пам'яті (порожнє за замовчуванням)
+let memoryArticles: Article[] = [];
 
 export async function initDb() {
   if (isTableInitialized) return;
@@ -30,19 +29,6 @@ export async function initDb() {
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `;
-
-    // Перевіряємо, чи є вже статті в базі даних
-    const { rows } = await sql`SELECT count(*) as count FROM articles;`;
-    if (parseInt(rows[0]?.count || '0', 10) === 0) {
-      // Початкове наповнення двома статтями
-      for (const a of INITIAL_ARTICLES) {
-        await sql`
-          INSERT INTO articles (id, title, excerpt, content, category, author, cover_image, date, read_time, published)
-          VALUES (${a.id}, ${a.title}, ${a.excerpt}, ${a.content}, ${a.category}, ${a.author}, ${a.coverImage || null}, ${a.date}, ${a.readTime}, ${a.published})
-          ON CONFLICT (id) DO NOTHING;
-        `;
-      }
-    }
 
     isTableInitialized = true;
   } catch (error) {

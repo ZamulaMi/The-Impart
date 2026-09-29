@@ -24,25 +24,19 @@ export default function App() {
   });
 
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const [articles, setArticles] = useState<Article[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error(e);
-    }
-    return INITIAL_ARTICLES;
-  });
-
-  // Завантаження статей із бази даних
+  // Завантаження статей виключно із бази даних
   useEffect(() => {
+    let isMounted = true;
+
     const fetchArticlesFromDb = async () => {
       try {
         const res = await fetch('/api/articles');
         if (res.ok) {
           const data = await res.json();
-          if (Array.isArray(data) && data.length > 0) {
+          if (isMounted && Array.isArray(data)) {
             setArticles(data);
             try {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -52,11 +46,27 @@ export default function App() {
           }
         }
       } catch (err) {
-        console.warn('Backend unavailable, using cached articles:', err);
+        console.warn('Backend unavailable, checking local storage:', err);
+        try {
+          const cached = localStorage.getItem(STORAGE_KEY);
+          if (cached && isMounted) {
+            setArticles(JSON.parse(cached));
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchArticlesFromDb();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Синхронізація з навігацією браузера
@@ -196,10 +206,17 @@ export default function App() {
             />
           ) : (
             <div className="max-w-6xl mx-auto px-6 sm:px-12 md:px-16 py-8 sm:py-12">
-              {publishedArticles.length === 0 ? (
+              {isLoading ? (
                 <div className="py-24 text-center">
-                  <p className="text-neutral-400 font-serif italic text-lg">
-                    Матеріали готуються до публікації.
+                  <div className="inline-block w-5 h-5 border-2 border-neutral-300 border-t-black rounded-full animate-spin" />
+                </div>
+              ) : publishedArticles.length === 0 ? (
+                <div className="py-24 text-center max-w-md mx-auto">
+                  <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-2">
+                    У базі даних наразі немає опублікованих статей.
+                  </p>
+                  <p className="text-xs text-neutral-400 font-sans">
+                    Створюйте та публікуйте матеріали через панель адміністратора.
                   </p>
                 </div>
               ) : (
