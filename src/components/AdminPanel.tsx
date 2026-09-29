@@ -4,8 +4,8 @@ import { Article } from '../types';
 
 interface AdminPanelProps {
   articles: Article[];
-  onSaveArticle: (article: Article) => void;
-  onDeleteArticle: (id: string) => void;
+  onSaveArticle: (article: Article) => Promise<void> | void;
+  onDeleteArticle: (id: string) => Promise<void> | void;
   onExitAdmin: () => void;
   onViewArticleOnSite: (id: string) => void;
 }
@@ -20,13 +20,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
+    setTimeout(() => setNotification(null), 4000);
   };
 
   const handleStartCreate = () => {
+    setErrorMsg(null);
     setIsCreatingNew(true);
     setEditingArticle({
       id: Date.now().toString(),
@@ -43,21 +46,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const handleStartEdit = (article: Article) => {
+    setErrorMsg(null);
     setIsCreatingNew(false);
     setEditingArticle({ ...article });
   };
 
   const handleCancel = () => {
+    setErrorMsg(null);
     setEditingArticle(null);
     setIsCreatingNew(false);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingArticle || !editingArticle.title?.trim()) {
       alert('Будь ласка, вкажіть заголовок статті.');
       return;
     }
+
+    setIsSaving(true);
+    setErrorMsg(null);
 
     const finalArticle: Article = {
       id: editingArticle.id || Date.now().toString(),
@@ -72,10 +80,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       published: editingArticle.published !== false,
     };
 
-    onSaveArticle(finalArticle);
-    showNotification(isCreatingNew ? 'Статтю успішно створено!' : 'Зміни успішно збережено!');
-    setEditingArticle(null);
-    setIsCreatingNew(false);
+    try {
+      await onSaveArticle(finalArticle);
+      showNotification(isCreatingNew ? 'Статтю успішно опубліковано у базі даних!' : 'Зміни успішно збережено!');
+      setEditingArticle(null);
+      setIsCreatingNew(false);
+    } catch (err: any) {
+      console.error('Save error:', err);
+      setErrorMsg(err.message || 'Помилка збереження у базі даних.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -281,20 +296,32 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 </label>
               </div>
 
+              {/* Повідомлення про помилку збереження */}
+              {errorMsg && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs rounded">
+                  {errorMsg}
+                </div>
+              )}
+
               {/* Кнопки збереження */}
               <div className="pt-6 border-t border-neutral-100 flex items-center justify-end gap-3">
                 <button
                   type="button"
+                  disabled={isSaving}
                   onClick={handleCancel}
-                  className="px-5 py-2 text-xs sm:text-sm text-neutral-600 hover:text-black transition-colors cursor-pointer"
+                  className="px-5 py-2 text-xs sm:text-sm text-neutral-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Скасувати
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 bg-black text-white text-xs sm:text-sm tracking-wide hover:bg-neutral-800 transition-colors cursor-pointer"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 bg-black text-white text-xs sm:text-sm tracking-wide hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2"
                 >
-                  {isCreatingNew ? 'Опублікувати статтю' : 'Зберегти зміни'}
+                  {isSaving && (
+                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  )}
+                  <span>{isSaving ? 'Збереження...' : isCreatingNew ? 'Опублікувати статтю' : 'Зберегти зміни'}</span>
                 </button>
               </div>
             </form>

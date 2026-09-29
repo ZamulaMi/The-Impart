@@ -27,46 +27,38 @@ export default function App() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Завантаження статей виключно із бази даних
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchArticlesFromDb = async () => {
-      try {
-        const res = await fetch('/api/articles');
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && Array.isArray(data)) {
-            setArticles(data);
-            try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-            } catch (e) {
-              console.error(e);
-            }
+  const fetchArticlesFromDb = async () => {
+    try {
+      const res = await fetch('/api/articles');
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setArticles(data);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+          } catch (e) {
+            console.error(e);
           }
-        }
-      } catch (err) {
-        console.warn('Backend unavailable, checking local storage:', err);
-        try {
-          const cached = localStorage.getItem(STORAGE_KEY);
-          if (cached && isMounted) {
-            setArticles(JSON.parse(cached));
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
         }
       }
-    };
+    } catch (err) {
+      console.warn('Backend unavailable, checking local storage:', err);
+      try {
+        const cached = localStorage.getItem(STORAGE_KEY);
+        if (cached) {
+          setArticles(JSON.parse(cached));
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  // Завантаження статей виключно із бази даних
+  useEffect(() => {
     fetchArticlesFromDb();
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   // Синхронізація з навігацією браузера
@@ -80,6 +72,7 @@ export default function App() {
         setSelectedArticleId(null);
       } else {
         setCurrentRoute('main');
+        fetchArticlesFromDb();
       }
     };
 
@@ -105,16 +98,32 @@ export default function App() {
       } else {
         setSelectedArticleId(null);
       }
+      // Оновлюємо статті при поверненні на головну
+      fetchArticlesFromDb();
     }
   };
 
   const handleSaveArticle = async (article: Article) => {
-    // Оптимістичне збереження
+    // Збереження у базу даних Vercel Postgres
+    const res = await fetch('/api/articles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(article),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Помилка сервера HTTP ${res.status}`);
+    }
+
+    const savedArticle = await res.json();
+
+    // Оновлюємо стан на основі відповіді бази даних
     setArticles((prev) => {
-      const exists = prev.some((a) => a.id === article.id);
+      const exists = prev.some((a) => a.id === savedArticle.id);
       const updated = exists
-        ? prev.map((a) => (a.id === article.id ? article : a))
-        : [article, ...prev];
+        ? prev.map((a) => (a.id === savedArticle.id ? savedArticle : a))
+        : [savedArticle, ...prev];
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -123,20 +132,24 @@ export default function App() {
       return updated;
     });
 
-    // Збереження у базу даних Vercel Postgres
-    try {
-      await fetch('/api/articles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(article),
-      });
-    } catch (e) {
-      console.error('Failed to sync article with database:', e);
-    }
+    // Додатково синхронізуємо повний список
+    await fetchArticlesFromDb();
   };
 
   const handleDeleteArticle = async (id: string) => {
-    // Оптимістичне видалення
+    // Видалення з бази даних Vercel Postgres
+    try {
+      const res = await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      console.error('Failed to delete article from database:', e);
+    }
+
     setArticles((prev) => {
       const updated = prev.filter((a) => a.id !== id);
       try {
@@ -148,15 +161,6 @@ export default function App() {
     });
     if (selectedArticleId === id) {
       setSelectedArticleId(null);
-    }
-
-    // Видалення з бази даних Vercel Postgres
-    try {
-      await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-      });
-    } catch (e) {
-      console.error('Failed to delete article from database:', e);
     }
   };
 
@@ -173,7 +177,9 @@ export default function App() {
     );
   }
 
-  const publishedArticles = articles.filter((a) => a.published);
+  const publishedArticles = articles.filter(
+    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
+  );
   const selectedArticle = articles.find((a) => a.id === selectedArticleId);
 
   return (
