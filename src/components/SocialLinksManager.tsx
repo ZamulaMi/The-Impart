@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Globe, Save, Check, RefreshCw } from 'lucide-react';
 import { SiteSocialLinks, SocialLinksSet } from '../types';
 
@@ -17,6 +17,13 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   const [formData, setFormData] = useState<SiteSocialLinks>(socialLinks);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!hasChanges) {
+      setFormData(socialLinks);
+    }
+  }, [socialLinks, hasChanges]);
 
   // Оновлення посилання для конкретної мови та платформи
   const handleLinkChange = (lang: 'ua' | 'en', platform: keyof SocialLinksSet, value: string) => {
@@ -28,6 +35,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
       },
     }));
     setHasChanges(true);
+    setErrorMessage(null);
   };
 
   const handleCopyFromOtherLang = (sourceLang: 'ua' | 'en', targetLang: 'ua' | 'en') => {
@@ -38,6 +46,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
       },
     }));
     setHasChanges(true);
+    setErrorMessage(null);
     showNotification(
       targetLang === 'en'
         ? 'Посилання скопійовано з української версії'
@@ -48,12 +57,19 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
+    setErrorMessage(null);
     try {
       await onSaveSocialLinks(formData);
       setHasChanges(false);
-      showNotification('Посилання на соц. мережі успішно збережено у базі даних!');
+      showNotification('Посилання на соц. мережі успішно збережено!');
     } catch (err: any) {
-      alert(err.message || 'Помилка збереження посилань');
+      console.error('Save social links error:', err);
+      // Оскільки локально зміни вже збережено, повідомляємо користувача м'яко
+      setErrorMessage(
+        err?.message || 'Сервер тимчасово недоступний, але зміни надійно збережено локально на цьому пристрої.'
+      );
+      setHasChanges(false);
+      showNotification('Посилання збережено локально.');
     } finally {
       setIsSaving(false);
     }
@@ -88,6 +104,20 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
           <span>{isSaving ? 'Збереження...' : 'Зберегти зміни'}</span>
         </button>
       </div>
+
+      {/* Повідомлення про статус / помилку */}
+      {errorMessage && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded flex items-center justify-between">
+          <span>{errorMessage}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMessage(null)}
+            className="text-amber-600 hover:text-amber-900 ml-4 font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
 
       {/* Вкладки вибору мови: UA та EN */}
       <div className="flex items-center justify-between border-b border-neutral-200 pb-px mb-8">

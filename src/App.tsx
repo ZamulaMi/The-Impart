@@ -103,23 +103,41 @@ export default function App() {
   };
 
   const handleSaveSocialLinks = async (links: SiteSocialLinks) => {
-    const res = await fetch('/api/settings', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(links),
-    });
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-
-    const saved = await res.json();
-    setSocialLinks(saved);
     try {
-      localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(saved));
-    } catch (e) {
-      console.error(e);
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(links),
+      });
+
+      if (!res.ok) {
+        let errorDetail = `Помилка сервера HTTP ${res.status}`;
+        try {
+          const err = await res.json();
+          if (err && err.error) errorDetail = err.error;
+        } catch {
+          const text = await res.text().catch(() => '');
+          if (text) errorDetail = text;
+        }
+        throw new Error(errorDetail);
+      }
+
+      const saved = await res.json();
+      setSocialLinks(saved);
+      try {
+        localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(saved));
+      } catch (e) {
+        console.error(e);
+      }
+    } catch (err: any) {
+      // Навіть якщо сервер тимчасово повертає помилку, надійно зберігаємо локально
+      setSocialLinks(links);
+      try {
+        localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(links));
+      } catch (e) {
+        console.error(e);
+      }
+      throw err;
     }
   };
 

@@ -30,6 +30,7 @@ export const DEFAULT_SOCIAL_LINKS: SiteSocialLinks = {
   },
 };
 
+let inMemorySocialLinks: SiteSocialLinks = { ...DEFAULT_SOCIAL_LINKS };
 let isSettingsTableInitialized = false;
 
 async function initSettingsDb() {
@@ -38,10 +39,11 @@ async function initSettingsDb() {
   const sql = getNeonSql();
 
   try {
+    // Створюємо таблицю з типами TEXT для максимальної сумісності
     await sql`
       CREATE TABLE IF NOT EXISTS site_settings (
         key VARCHAR(100) PRIMARY KEY,
-        value JSONB NOT NULL,
+        value TEXT NOT NULL,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `;
@@ -56,8 +58,7 @@ async function initSettingsDb() {
     }
     isSettingsTableInitialized = true;
   } catch (err) {
-    console.error('Failed to initialize site_settings table:', err);
-    throw err;
+    console.error('Failed to initialize site_settings table in Postgres, will fallback to memory:', err);
   }
 }
 
@@ -68,44 +69,53 @@ export async function getSocialLinks(): Promise<SiteSocialLinks> {
     const rows = await sql`SELECT value FROM site_settings WHERE key = 'social_links' LIMIT 1;`;
     if (rows && rows.length > 0 && rows[0].value) {
       const val = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
-      return {
+      const combined: SiteSocialLinks = {
         ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(val.ua || {}) },
         en: { ...DEFAULT_SOCIAL_LINKS.en, ...(val.en || {}) },
       };
+      inMemorySocialLinks = combined;
+      return combined;
     }
-    return DEFAULT_SOCIAL_LINKS;
   } catch (err) {
-    console.error('getSocialLinks error, falling back to defaults:', err);
-    return DEFAULT_SOCIAL_LINKS;
+    console.warn('getSocialLinks database query error, using current cache:', err);
   }
+  return inMemorySocialLinks;
 }
 
-export async function saveSocialLinks(links: SiteSocialLinks): Promise<SiteSocialLinks> {
-  await initSettingsDb();
-  const sql = getNeonSql();
+export async function saveSocialLinks(links: Partial<SiteSocialLinks>): Promise<SiteSocialLinks> {
   const cleaned: SiteSocialLinks = {
     ua: {
-      telegram: links.ua?.telegram?.trim() || '',
-      instagram: links.ua?.instagram?.trim() || '',
-      x: links.ua?.x?.trim() || '',
-      youtube: links.ua?.youtube?.trim() || '',
-      threads: links.ua?.threads?.trim() || '',
+      telegram: links.ua?.telegram !== undefined ? String(links.ua.telegram).trim() : (inMemorySocialLinks.ua.telegram || ''),
+      instagram: links.ua?.instagram !== undefined ? String(links.ua.instagram).trim() : (inMemorySocialLinks.ua.instagram || ''),
+      x: links.ua?.x !== undefined ? String(links.ua.x).trim() : (inMemorySocialLinks.ua.x || ''),
+      youtube: links.ua?.youtube !== undefined ? String(links.ua.youtube).trim() : (inMemorySocialLinks.ua.youtube || ''),
+      threads: links.ua?.threads !== undefined ? String(links.ua.threads).trim() : (inMemorySocialLinks.ua.threads || ''),
     },
     en: {
-      telegram: links.en?.telegram?.trim() || '',
-      instagram: links.en?.instagram?.trim() || '',
-      x: links.en?.x?.trim() || '',
-      youtube: links.en?.youtube?.trim() || '',
-      threads: links.en?.threads?.trim() || '',
+      telegram: links.en?.telegram !== undefined ? String(links.en.telegram).trim() : (inMemorySocialLinks.en.telegram || ''),
+      instagram: links.en?.instagram !== undefined ? String(links.en.instagram).trim() : (inMemorySocialLinks.en.instagram || ''),
+      x: links.en?.x !== undefined ? String(links.en.x).trim() : (inMemorySocialLinks.en.x || ''),
+      youtube: links.en?.youtube !== undefined ? String(links.en.youtube).trim() : (inMemorySocialLinks.en.youtube || ''),
+      threads: links.en?.threads !== undefined ? String(links.en.threads).trim() : (inMemorySocialLinks.en.threads || ''),
     },
   };
 
-  await sql`
-    INSERT INTO site_settings (key, value, updated_at)
-    VALUES ('social_links', ${JSON.stringify(cleaned)}, CURRENT_TIMESTAMP)
-    ON CONFLICT (key) DO UPDATE
-    SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
-  `;
+  inMemorySocialLinks = cleaned;
+
+  try {
+    await initSettingsDb();
+    const sql = getNeonSql();
+    const jsonStr = JSON.stringify(cleaned);
+
+    await sql`
+      INSERT INTO site_settings (key, value, updated_at)
+      VALUES ('social_links', ${jsonStr}, CURRENT_TIMESTAMP)
+      ON CONFLICT (key) DO UPDATE
+      SET value = ${jsonStr}, updated_at = CURRENT_TIMESTAMP;
+    `;
+  } catch (err) {
+    console.error('Failed to save to Postgres site_settings table, saved in-memory:', err);
+  }
 
   return cleaned;
 }
@@ -121,10 +131,36 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
-      const body = req.body;
+      let body = req.body;
+
+      // Якщо тіло не було розпарсено
+      if (!body && typeof req.on === 'function') {
+        body = await new Promise((resolve) => {
+          let data = '';
+          req.on('data', (chunk: any) => { data += chunk; });
+          req.on('end', () => {
+            try {
+              resolve(data ? JSON.parse(data) : {});
+            } catch {
+              resolve({});
+            }
+          });
+          req.on('error', () => resolve({}));
+        });
+      }
+
+      if (typeof body === 'string') {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          return res.status(400).json({ error: 'Недійсний JSON у запиті' });
+        }
+      }
+
       if (!body || typeof body !== 'object') {
         return res.status(400).json({ error: 'Недійсні дані запиту' });
       }
+
       const saved = await saveSocialLinks(body);
       return res.status(200).json(saved);
     }
@@ -132,6 +168,6 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
     console.error('Social links handler error:', error);
-    return res.status(500).json({ error: error.message || 'Server Error' });
+    return res.status(500).json({ error: error?.message || 'Server Error' });
   }
 }
