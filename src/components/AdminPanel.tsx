@@ -12,6 +12,8 @@ import {
   Image as ImageIcon,
   Video as VideoIcon,
   X,
+  Languages,
+  Copy,
 } from 'lucide-react';
 import { Article } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
@@ -37,10 +39,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [notification, setNotification] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'hidden'>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'published_ua' | 'published_en' | 'hidden'>('all');
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  // Вкладка редагування: 'edit' (текст) або 'preview' (попередній перегляд медіа)
+  // Мовна вкладка у редакторі форми: 'ua' або 'en'
+  const [formLangTab, setFormLangTab] = useState<'ua' | 'en'>('ua');
+
+  // Вкладка перегляду контенту: 'edit' або 'preview'
   const [editorTab, setEditorTab] = useState<'edit' | 'preview'>('edit');
 
   // Модальне вікно вставки фото або YouTube
@@ -58,6 +63,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleStartCreate = () => {
     setErrorMsg(null);
     setIsCreatingNew(true);
+    setFormLangTab('ua');
     setEditorTab('edit');
     setEditingArticle({
       id: Date.now().toString(),
@@ -69,12 +75,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       coverImage: '',
       date: new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
       published: true,
+      titleEn: '',
+      excerptEn: '',
+      contentEn: '',
+      categoryEn: 'Essay',
+      publishedEn: false,
     });
   };
 
   const handleStartEdit = (article: Article) => {
     setErrorMsg(null);
     setIsCreatingNew(false);
+    setFormLangTab('ua');
     setEditorTab('edit');
     setEditingArticle({ ...article });
   };
@@ -86,13 +98,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setEditorTab('edit');
   };
 
-  // Швидке перемикання видимості статті (опублікована / прихована)
-  const handleToggleVisibility = async (article: Article) => {
+  // Швидке перемикання видимості статті для української версії
+  const handleToggleUaVisibility = async (article: Article) => {
     const isCurrentlyPublished =
       article.published === true || String(article.published) === 'true' || (article.published as any) === 1;
     const nextPublished = !isCurrentlyPublished;
 
-    setTogglingId(article.id);
+    setTogglingId(`ua_${article.id}`);
     try {
       await onSaveArticle({
         ...article,
@@ -100,8 +112,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       });
       showNotification(
         nextPublished
-          ? `Статтю «${article.title}» опубліковано на сайті.`
-          : `Статтю «${article.title}» приховано з сайту.`
+          ? `Українську версію «${article.title}» опубліковано на сайті.`
+          : `Українську версію «${article.title}» приховано з сайту.`
+      );
+    } catch (err: any) {
+      console.error('Toggle visibility error:', err);
+      showNotification(`Помилка: ${err.message || 'Не вдалося змінити видимість'}`);
+    } finally {
+      setTogglingId(null);
+    }
+  };
+
+  // Швидке перемикання видимості статті для англійської версії
+  const handleToggleEnVisibility = async (article: Article) => {
+    if (!article.titleEn?.trim()) {
+      showNotification('Спочатку заповніть англійську версію статті у редакторі.');
+      return;
+    }
+
+    const isCurrentlyPublished =
+      article.publishedEn === true || String(article.publishedEn) === 'true' || (article.publishedEn as any) === 1;
+    const nextPublished = !isCurrentlyPublished;
+
+    setTogglingId(`en_${article.id}`);
+    try {
+      await onSaveArticle({
+        ...article,
+        publishedEn: nextPublished,
+      });
+      showNotification(
+        nextPublished
+          ? `Англійську версію «${article.titleEn}» опубліковано на сайті.`
+          : `Англійську версію «${article.titleEn}» приховано з сайту.`
       );
     } catch (err: any) {
       console.error('Toggle visibility error:', err);
@@ -130,15 +172,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       }
     }
 
-    setEditingArticle((prev) => ({
-      ...prev,
-      content: (prev?.content || '').trimEnd() + snippet,
-    }));
+    if (formLangTab === 'ua') {
+      setEditingArticle((prev) => ({
+        ...prev,
+        content: (prev?.content || '').trimEnd() + snippet,
+      }));
+    } else {
+      setEditingArticle((prev) => ({
+        ...prev,
+        contentEn: (prev?.contentEn || '').trimEnd() + snippet,
+      }));
+    }
 
     showNotification(
       mediaDialog.type === 'youtube'
-        ? 'Посилання на YouTube додано до статті'
-        : 'Посилання на фото додано до статті'
+        ? 'Посилання на YouTube додано до тексту'
+        : 'Посилання на фото додано до тексту'
     );
     setMediaDialog(null);
   };
@@ -146,7 +195,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingArticle || !editingArticle.title?.trim()) {
-      alert('Будь ласка, вкажіть заголовок статті.');
+      alert('Будь ласка, вкажіть заголовок статті для основної (української) версії.');
       return;
     }
 
@@ -154,30 +203,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setErrorMsg(null);
 
     const isPub = editingArticle.published !== false && String(editingArticle.published) !== 'false';
+    const isPubEn =
+      editingArticle.publishedEn === true || String(editingArticle.publishedEn) === 'true';
 
     const finalArticle: Article = {
       id: editingArticle.id || Date.now().toString(),
+      // Українська версія
       title: editingArticle.title.trim(),
       excerpt: editingArticle.excerpt?.trim() || '',
       content: editingArticle.content?.trim() || '',
       category: editingArticle.category?.trim() || 'Загальне',
+      published: isPub,
+      // Загальні метадані
       author: editingArticle.author?.trim() || 'Редакція The Impart',
       coverImage: editingArticle.coverImage?.trim() || undefined,
       date: editingArticle.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
       createdAt: editingArticle.createdAt || new Date().toISOString(),
-      published: isPub,
+      // Англійська версія
+      titleEn: editingArticle.titleEn?.trim() || undefined,
+      excerptEn: editingArticle.excerptEn?.trim() || undefined,
+      contentEn: editingArticle.contentEn?.trim() || undefined,
+      categoryEn: editingArticle.categoryEn?.trim() || undefined,
+      publishedEn: isPubEn,
     };
 
     try {
       await onSaveArticle(finalArticle);
       showNotification(
         isCreatingNew
-          ? isPub
-            ? 'Статтю успішно створено та опубліковано на сайті!'
-            : 'Статтю збережено у чернетках (приховано)!'
-          : isPub
-          ? 'Зміни збережено (стаття активна на сайті)!'
-          : 'Зміни збережено (стаття прихована від читачів)!'
+          ? 'Статтю успішно створено та збережено у базі даних!'
+          : 'Зміни успішно збережено!'
       );
       setEditingArticle(null);
       setIsCreatingNew(false);
@@ -189,17 +244,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const publishedCount = articles.filter(
-    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
-  ).length;
-  const hiddenCount = articles.length - publishedCount;
-
   const filteredArticles = articles.filter((a) => {
-    const isPub = a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
-    if (filterStatus === 'published') return isPub;
-    if (filterStatus === 'hidden') return !isPub;
+    const isPubUa = a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
+    const isPubEn = a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1;
+
+    if (filterStatus === 'published_ua') return isPubUa;
+    if (filterStatus === 'published_en') return isPubEn;
+    if (filterStatus === 'hidden') return !isPubUa && !isPubEn;
     return true;
   });
+
+  const uaPublishedCount = articles.filter(
+    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
+  ).length;
+  const enPublishedCount = articles.filter(
+    (a) => a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1
+  ).length;
 
   return (
     <div className="min-h-screen bg-white text-black font-sans flex flex-col">
@@ -212,7 +272,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             title="Повернутися на головний сайт"
           >
             <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
-            <span className="hidden sm:inline">На головну</span>
+            <span className="hidden sm:inline">На сайт</span>
           </button>
           <span className="text-neutral-300">/</span>
           <span
@@ -236,7 +296,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             className="text-xs text-neutral-500 hover:text-black flex items-center gap-1.5 transition-colors"
           >
             <Globe className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Відкрити сайт</span>
+            <span className="hidden md:inline">Головна сторінка</span>
           </a>
         </div>
       </header>
@@ -310,8 +370,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
               <p className="text-xs text-neutral-500 bg-neutral-50 p-2.5 rounded">
                 {mediaDialog.type === 'youtube'
-                  ? 'Відео буде автоматично вбудовано у повний розмір із інтерактивним плеєром.'
-                  : 'Фото буде відображено у високій якості на всю ширину тексту.'}
+                  ? 'Відео буде вбудовано на всю ширину тексту зі зручним плеєром.'
+                  : 'Зображення відобразиться у високій якості на всю ширину сторінки.'}
               </p>
 
               <div className="flex items-center justify-end gap-2 pt-2">
@@ -328,7 +388,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   onClick={handleInsertMedia}
                   className="px-4 py-2 bg-black text-white text-xs rounded hover:bg-neutral-800 disabled:opacity-50 cursor-pointer"
                 >
-                  Вставити у текст
+                  Вставити у текст ({formLangTab === 'ua' ? 'UA' : 'EN'})
                 </button>
               </div>
             </div>
@@ -341,13 +401,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         {editingArticle ? (
           /* Форма редагування / створення статті */
           <div className="max-w-3xl mx-auto">
-            <div className="flex items-center justify-between pb-6 border-b border-neutral-100 mb-8">
+            <div className="flex items-center justify-between pb-6 border-b border-neutral-100 mb-6">
               <div>
                 <h1 className="text-xl sm:text-2xl font-serif font-medium text-black">
                   {isCreatingNew ? 'Нова стаття' : 'Редагування статті'}
                 </h1>
                 <p className="text-xs text-neutral-500 mt-1">
-                  Заповніть форму для збереження статті у базі даних Neon Postgres
+                  Основна назва статті в списку завжди українською, переклад створюється на вкладці «English».
                 </p>
               </div>
               <button
@@ -359,68 +419,90 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </button>
             </div>
 
+            {/* ВКЛАДКИ МОВ: УКРАЇНСЬКА ТА АНГЛІЙСЬКА */}
+            <div className="flex items-center gap-2 border-b border-neutral-200 pb-px mb-8">
+              <button
+                type="button"
+                onClick={() => setFormLangTab('ua')}
+                className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all cursor-pointer ${
+                  formLangTab === 'ua'
+                    ? 'border-black text-black'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-700'
+                }`}
+              >
+                <span className="text-base">🇺🇦</span>
+                <span>Українська версія (основна)</span>
+                {editingArticle.published !== false ? (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" title="Опубліковано на UA" />
+                ) : (
+                  <span className="w-2 h-2 rounded-full bg-neutral-300" title="Приховано на UA" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setFormLangTab('en')}
+                className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all cursor-pointer ${
+                  formLangTab === 'en'
+                    ? 'border-black text-black'
+                    : 'border-transparent text-neutral-400 hover:text-neutral-700'
+                }`}
+              >
+                <span className="text-base">🇬🇧</span>
+                <span>English version</span>
+                {editingArticle.publishedEn ? (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" title="Опубліковано на EN" />
+                ) : editingArticle.titleEn?.trim() ? (
+                  <span className="w-2 h-2 rounded-full bg-amber-400" title="Чернетка EN" />
+                ) : (
+                  <span className="text-[10px] text-neutral-400 uppercase tracking-wider font-normal">
+                    (порожньо)
+                  </span>
+                )}
+              </button>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Заголовок */}
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  Заголовок статті *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Введіть заголовок статті..."
-                  value={editingArticle.title || ''}
-                  onChange={(e) => setEditingArticle({ ...editingArticle, title: e.target.value })}
-                  className="w-full text-lg sm:text-xl font-serif border-b border-neutral-200 pb-2 focus:border-black focus:outline-none transition-colors"
-                />
-              </div>
-
-              {/* Метадані статті (Рубрика та Автор — без часу читання) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                    Рубрика / Тема
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="напр. Філософія, Архітектура"
-                    value={editingArticle.category || ''}
-                    onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value })}
-                    className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                  />
+              {/* ЗАГАЛЬНІ ПОЛЯ (Автор та обкладинка — спільні для обох мов) */}
+              <div className="p-4 bg-neutral-50/70 border border-neutral-200/80 rounded-lg space-y-4">
+                <div className="flex items-center justify-between text-xs text-neutral-500 uppercase tracking-wider">
+                  <span>Загальні параметри матеріалу</span>
+                  <span className="text-[10px] text-neutral-400">Спільні для UA та EN</span>
                 </div>
 
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                    Автор
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ім'я автора"
-                    value={editingArticle.author || ''}
-                    onChange={(e) => setEditingArticle({ ...editingArticle, author: e.target.value })}
-                    className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                  />
-                </div>
-              </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      Автор статті
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ім'я автора"
+                      value={editingArticle.author || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, author: e.target.value })}
+                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors bg-transparent"
+                    />
+                  </div>
 
-              {/* Головне зображення обкладинки */}
-              <div className="pt-2">
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  URL головної обкладинки (необов'язково)
-                </label>
-                <input
-                  type="url"
-                  placeholder="https://images.unsplash.com/..."
-                  value={editingArticle.coverImage || ''}
-                  onChange={(e) => setEditingArticle({ ...editingArticle, coverImage: e.target.value })}
-                  className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                />
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      URL головної обкладинки
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://images.unsplash.com/..."
+                      value={editingArticle.coverImage || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, coverImage: e.target.value })}
+                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors bg-transparent"
+                    />
+                  </div>
+                </div>
+
                 {editingArticle.coverImage && (
-                  <div className="mt-3 aspect-[16/9] max-h-48 overflow-hidden rounded bg-neutral-50">
+                  <div className="aspect-[16/9] max-h-40 overflow-hidden rounded bg-neutral-100">
                     <img
                       src={editingArticle.coverImage}
-                      alt="Прев'ю обкладинки"
+                      alt="Обкладинка"
                       className="w-full h-full object-cover"
                       onError={(e) => {
                         (e.target as HTMLImageElement).style.display = 'none';
@@ -430,174 +512,360 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 )}
               </div>
 
-              {/* Короткий опис / лід */}
-              <div className="pt-2">
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  Короткий опис (для картки на головній)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Одне або два речення про головну думку статті..."
-                  value={editingArticle.excerpt || ''}
-                  onChange={(e) => setEditingArticle({ ...editingArticle, excerpt: e.target.value })}
-                  className="w-full text-sm border border-neutral-200 p-3 focus:border-black focus:outline-none transition-colors resize-none"
-                />
-              </div>
-
-              {/* Повний текст статті + Вставка фото/відео та режим попереднього перегляду */}
-              <div className="pt-2">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500">
-                    Текст статті *
-                  </label>
-
-                  {/* Панель інструментів для медіа */}
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
-                      title="Вставити посилання на фото у статтю"
-                    >
-                      <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
-                      <span>+ Вставити фото</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
-                      title="Вставити посилання на відео з YouTube"
-                    >
-                      <VideoIcon className="w-3.5 h-3.5 text-red-600" />
-                      <span>+ YouTube</span>
-                    </button>
-
-                    {/* Перемикач: Редактор / Прев'ю */}
-                    <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
-                      <button
-                        type="button"
-                        onClick={() => setEditorTab('edit')}
-                        className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                          editorTab === 'edit'
-                            ? 'bg-black text-white font-medium'
-                            : 'bg-white text-neutral-600 hover:text-black'
-                        }`}
-                      >
-                        Текст
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditorTab('preview')}
-                        className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                          editorTab === 'preview'
-                            ? 'bg-black text-white font-medium'
-                            : 'bg-white text-neutral-600 hover:text-black'
-                        }`}
-                      >
-                        Прев'ю медіа
-                      </button>
-                    </div>
+              {/* ВМІСТ УКРАЇНСЬКОЇ ВЕРСІЇ */}
+              {formLangTab === 'ua' && (
+                <div className="space-y-6 animate-fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                    <span className="text-xs uppercase tracking-wider font-medium text-black flex items-center gap-1.5">
+                      <span>🇺🇦</span> Український текст статті
+                    </span>
+                    <span className="text-xs text-neutral-400">Основна версія</span>
                   </div>
-                </div>
 
-                {editorTab === 'edit' ? (
+                  {/* Заголовок UA */}
                   <div>
-                    <textarea
-                      rows={12}
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Заголовок статті (UA) *
+                    </label>
+                    <input
+                      type="text"
                       required
-                      placeholder={`Напишіть текст статті тут. Розділяйте абзаци порожнім рядком.
-
-Щоб додати фото або відео з YouTube, просто вставте посилання окремим рядком:
-https://images.unsplash.com/...
-https://www.youtube.com/watch?v=...`}
-                      value={editingArticle.content || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
-                      className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
+                      placeholder="Введіть заголовок статті українською..."
+                      value={editingArticle.title || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, title: e.target.value })}
+                      className="w-full text-lg sm:text-xl font-serif border-b border-neutral-200 pb-2 focus:border-black focus:outline-none transition-colors"
                     />
-                    <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-1.5">
-                      <span>💡 Посилання на фото чи YouTube окремим рядком автоматично транслюються у повний плеєр та якісні зображення.</span>
-                      <button
-                        type="button"
-                        onClick={() => setEditorTab('preview')}
-                        className="text-black hover:underline cursor-pointer font-sans"
-                      >
-                        Переглянути вигляд
-                      </button>
-                    </div>
                   </div>
-                ) : (
-                  <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[300px]">
-                    <div className="text-xs uppercase tracking-wider text-neutral-400 mb-6 font-sans border-b border-neutral-200 pb-2 flex items-center justify-between">
-                      <span>Попередній перегляд статті:</span>
-                      <span className="text-[11px] text-neutral-400">Як це бачитимуть читачі</span>
+
+                  {/* Рубрика UA */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Рубрика / Тема (UA)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="напр. Філософія, Архітектура, Есе"
+                      value={editingArticle.category || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value })}
+                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Короткий опис UA */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Короткий опис (для списку на головній)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Одне-два речення про головну думку статті українською..."
+                      value={editingArticle.excerpt || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, excerpt: e.target.value })}
+                      className="w-full text-sm border border-neutral-200 p-3 focus:border-black focus:outline-none transition-colors resize-none"
+                    />
+                  </div>
+
+                  {/* Текст UA + медіа інструменти */}
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                        Текст статті (UA) *
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
+                          <span>+ Фото</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
+                        >
+                          <VideoIcon className="w-3.5 h-3.5 text-red-600" />
+                          <span>+ YouTube</span>
+                        </button>
+
+                        <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditorTab('edit')}
+                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                              editorTab === 'edit'
+                                ? 'bg-black text-white font-medium'
+                                : 'bg-white text-neutral-600 hover:text-black'
+                            }`}
+                          >
+                            Текст
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditorTab('preview')}
+                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                              editorTab === 'preview'
+                                ? 'bg-black text-white font-medium'
+                                : 'bg-white text-neutral-600 hover:text-black'
+                            }`}
+                          >
+                            Прев'ю
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    {editingArticle.content ? (
-                      <ContentRenderer content={editingArticle.content} />
+
+                    {editorTab === 'edit' ? (
+                      <div>
+                        <textarea
+                          rows={12}
+                          required
+                          placeholder="Напишіть текст статті українською тут..."
+                          value={editingArticle.content || ''}
+                          onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
+                          className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
+                        />
+                      </div>
                     ) : (
-                      <p className="text-neutral-400 italic font-serif text-sm">Текст статті порожній</p>
+                      <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[250px]">
+                        <ContentRenderer content={editingArticle.content || ''} />
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
 
-              {/* Перемикач видимості статті: Опубліковано або Приховано */}
-              <div className="pt-2">
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2.5">
-                  Видимість статті на сайті
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setEditingArticle({ ...editingArticle, published: true })}
-                    className={`p-4 border text-left rounded transition-all cursor-pointer flex items-start gap-3.5 ${
-                      editingArticle.published !== false
-                        ? 'border-black bg-neutral-50 shadow-xs'
-                        : 'border-neutral-200 hover:border-neutral-300 bg-white text-neutral-600'
-                    }`}
-                  >
-                    <div className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0 mt-0.5">
-                      {editingArticle.published !== false && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-black" />
-                      )}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Eye className="w-4 h-4 text-emerald-600" />
-                        <span className="text-sm font-medium text-black">Опублікована</span>
-                      </div>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Стаття одразу відображається читачам на головній сторінці сайту.
-                      </p>
-                    </div>
-                  </button>
+                  {/* Перемикач видимості української версії */}
+                  <div className="pt-2">
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Видимість на українській версії сайту
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingArticle({ ...editingArticle, published: true })}
+                        className={`p-3.5 border text-left rounded transition-all cursor-pointer flex items-start gap-3 ${
+                          editingArticle.published !== false
+                            ? 'border-black bg-neutral-50 ring-1 ring-black'
+                            : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                        }`}
+                      >
+                        <Eye className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-black">Опубліковано для UA</div>
+                          <div className="text-[11px] text-neutral-500 mt-0.5">
+                            Відображається читачам, коли обрана мова UA
+                          </div>
+                        </div>
+                      </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setEditingArticle({ ...editingArticle, published: false })}
-                    className={`p-4 border text-left rounded transition-all cursor-pointer flex items-start gap-3.5 ${
-                      editingArticle.published === false
-                        ? 'border-black bg-neutral-50 shadow-xs'
-                        : 'border-neutral-200 hover:border-neutral-300 bg-white text-neutral-600'
-                    }`}
-                  >
-                    <div className="w-5 h-5 rounded-full border border-current flex items-center justify-center shrink-0 mt-0.5">
-                      {editingArticle.published === false && (
-                        <div className="w-2.5 h-2.5 rounded-full bg-black" />
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setEditingArticle({ ...editingArticle, published: false })}
+                        className={`p-3.5 border text-left rounded transition-all cursor-pointer flex items-start gap-3 ${
+                          editingArticle.published === false
+                            ? 'border-black bg-neutral-50 ring-1 ring-black'
+                            : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                        }`}
+                      >
+                        <EyeOff className="w-4 h-4 text-neutral-500 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-black">Приховано для UA</div>
+                          <div className="text-[11px] text-neutral-500 mt-0.5">
+                            Зберігається в базі, але не показується на сайті
+                          </div>
+                        </div>
+                      </button>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <EyeOff className="w-4 h-4 text-neutral-500" />
-                        <span className="text-sm font-medium text-black">Прихована (чернетка)</span>
-                      </div>
-                      <p className="text-xs text-neutral-500 mt-1">
-                        Зберігається у базі даних, але залишається невидимою для відвідувачів.
-                      </p>
-                    </div>
-                  </button>
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* ВМІСТ АНГЛІЙСЬКОЇ ВЕРСІЇ */}
+              {formLangTab === 'en' && (
+                <div className="space-y-6 animate-fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
+                    <span className="text-xs uppercase tracking-wider font-medium text-black flex items-center gap-1.5">
+                      <span>🇬🇧</span> English Article Version
+                    </span>
+                    {editingArticle.content && !editingArticle.contentEn && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // Допомагає скопіювати текст або медіа-посилання з UA для перекладу
+                          setEditingArticle({
+                            ...editingArticle,
+                            categoryEn: editingArticle.categoryEn || editingArticle.category,
+                            contentEn: editingArticle.content,
+                          });
+                          showNotification('Структуру тексту скопійовано з української версії для перекладу.');
+                        }}
+                        className="text-xs text-neutral-600 hover:text-black flex items-center gap-1 underline cursor-pointer"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Скопіювати з UA для перекладу</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Заголовок EN */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Article Title (EN)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Enter article title in English..."
+                      value={editingArticle.titleEn || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, titleEn: e.target.value })}
+                      className="w-full text-lg sm:text-xl font-serif border-b border-neutral-200 pb-2 focus:border-black focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Рубрика EN */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Topic / Category (EN)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Philosophy, Architecture, Essay"
+                      value={editingArticle.categoryEn || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, categoryEn: e.target.value })}
+                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
+                    />
+                  </div>
+
+                  {/* Короткий опис EN */}
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Excerpt / Summary (EN)
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="One or two sentences summarizing the article in English..."
+                      value={editingArticle.excerptEn || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, excerptEn: e.target.value })}
+                      className="w-full text-sm border border-neutral-200 p-3 focus:border-black focus:outline-none transition-colors resize-none"
+                    />
+                  </div>
+
+                  {/* Текст EN + медіа інструменти */}
+                  <div>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                        Article Content (EN)
+                      </label>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
+                        >
+                          <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
+                          <span>+ Photo</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
+                        >
+                          <VideoIcon className="w-3.5 h-3.5 text-red-600" />
+                          <span>+ YouTube</span>
+                        </button>
+
+                        <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditorTab('edit')}
+                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                              editorTab === 'edit'
+                                ? 'bg-black text-white font-medium'
+                                : 'bg-white text-neutral-600 hover:text-black'
+                            }`}
+                          >
+                            Text
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditorTab('preview')}
+                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                              editorTab === 'preview'
+                                ? 'bg-black text-white font-medium'
+                                : 'bg-white text-neutral-600 hover:text-black'
+                            }`}
+                          >
+                            Preview
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {editorTab === 'edit' ? (
+                      <div>
+                        <textarea
+                          rows={12}
+                          placeholder="Write English article content here..."
+                          value={editingArticle.contentEn || ''}
+                          onChange={(e) => setEditingArticle({ ...editingArticle, contentEn: e.target.value })}
+                          className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
+                        />
+                      </div>
+                    ) : (
+                      <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[250px]">
+                        <ContentRenderer content={editingArticle.contentEn || ''} />
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Перемикач видимості англійської версії */}
+                  <div className="pt-2">
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Видимість на англійській версії сайту
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditingArticle({ ...editingArticle, publishedEn: true })}
+                        className={`p-3.5 border text-left rounded transition-all cursor-pointer flex items-start gap-3 ${
+                          editingArticle.publishedEn === true
+                            ? 'border-black bg-neutral-50 ring-1 ring-black'
+                            : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                        }`}
+                      >
+                        <Eye className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-black">Опубліковано для EN</div>
+                          <div className="text-[11px] text-neutral-500 mt-0.5">
+                            Стаття з'явиться на сайті, коли читач перемкнеться на англійську мову
+                          </div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditingArticle({ ...editingArticle, publishedEn: false })}
+                        className={`p-3.5 border text-left rounded transition-all cursor-pointer flex items-start gap-3 ${
+                          editingArticle.publishedEn !== true
+                            ? 'border-black bg-neutral-50 ring-1 ring-black'
+                            : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                        }`}
+                      >
+                        <EyeOff className="w-4 h-4 text-neutral-500 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-xs sm:text-sm font-medium text-black">Приховано для EN (чернетка)</div>
+                          <div className="text-[11px] text-neutral-500 mt-0.5">
+                            Не відображається в англійській версії сайту
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Повідомлення про помилку збереження */}
               {errorMsg && (
@@ -607,35 +875,47 @@ https://www.youtube.com/watch?v=...`}
               )}
 
               {/* Кнопки збереження */}
-              <div className="pt-6 border-t border-neutral-100 flex items-center justify-end gap-3">
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={handleCancel}
-                  className="px-5 py-2 text-xs sm:text-sm text-neutral-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  Скасувати
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-6 py-2.5 bg-black text-white text-xs sm:text-sm tracking-wide hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2"
-                >
-                  {isSaving && (
-                    <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="pt-6 border-t border-neutral-100 flex items-center justify-between">
+                <div className="text-xs text-neutral-500">
+                  {formLangTab === 'ua' ? (
+                    <button
+                      type="button"
+                      onClick={() => setFormLangTab('en')}
+                      className="text-black hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <span>Перейти до редагування англійської версії 🇬🇧</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setFormLangTab('ua')}
+                      className="text-black hover:underline cursor-pointer flex items-center gap-1"
+                    >
+                      <span>Повернутися до української версії 🇺🇦</span>
+                    </button>
                   )}
-                  <span>
-                    {isSaving
-                      ? 'Збереження...'
-                      : isCreatingNew
-                      ? editingArticle.published === false
-                        ? 'Зберегти як приховану'
-                        : 'Опублікувати статтю'
-                      : editingArticle.published === false
-                      ? 'Зберегти (приховати)'
-                      : 'Зберегти зміни'}
-                  </span>
-                </button>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={isSaving}
+                    onClick={handleCancel}
+                    className="px-5 py-2 text-xs sm:text-sm text-neutral-600 hover:text-black transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSaving}
+                    className="px-6 py-2.5 bg-black text-white text-xs sm:text-sm tracking-wide hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-60 flex items-center gap-2"
+                  >
+                    {isSaving && (
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    )}
+                    <span>{isSaving ? 'Збереження...' : isCreatingNew ? 'Створити матеріал' : 'Зберегти зміни'}</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -649,8 +929,8 @@ https://www.youtube.com/watch?v=...`}
                   Редактор статей
                 </h1>
                 <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-                  Керування матеріалами журналу The Impart ({articles.length}{' '}
-                  {articles.length === 1 ? 'матеріал' : 'матеріалів'})
+                  Назва матеріалів у списку українською. Керування українською та англійською версіями ({articles.length}{' '}
+                  {articles.length === 1 ? 'стаття' : 'статей'})
                 </p>
               </div>
               <button
@@ -662,7 +942,7 @@ https://www.youtube.com/watch?v=...`}
               </button>
             </div>
 
-            {/* Вкладки фільтрів видимості: Всі, Опубліковані, Приховані */}
+            {/* Вкладки фільтрів видимості: Всі, Опубліковані UA, Опубліковані EN, Приховані */}
             {articles.length > 0 && (
               <div className="flex items-center gap-2 pb-4 mb-4 border-b border-neutral-100 overflow-x-auto">
                 <button
@@ -673,7 +953,7 @@ https://www.youtube.com/watch?v=...`}
                       : 'bg-neutral-100 text-neutral-600 hover:text-black hover:bg-neutral-200'
                   }`}
                 >
-                  <span>Всі</span>
+                  <span>Всі матеріали</span>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                     filterStatus === 'all' ? 'bg-neutral-800 text-white' : 'bg-neutral-200 text-neutral-600'
                   }`}>
@@ -682,19 +962,34 @@ https://www.youtube.com/watch?v=...`}
                 </button>
 
                 <button
-                  onClick={() => setFilterStatus('published')}
+                  onClick={() => setFilterStatus('published_ua')}
                   className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
-                    filterStatus === 'published'
+                    filterStatus === 'published_ua'
                       ? 'bg-emerald-700 text-white font-medium'
                       : 'bg-neutral-100 text-neutral-600 hover:text-emerald-700 hover:bg-emerald-50'
                   }`}
                 >
-                  <Eye className="w-3.5 h-3.5" />
-                  <span>Опубліковані</span>
+                  <span>🇺🇦 Опубліковані UA</span>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    filterStatus === 'published' ? 'bg-emerald-800 text-white' : 'bg-neutral-200 text-neutral-600'
+                    filterStatus === 'published_ua' ? 'bg-emerald-800 text-white' : 'bg-neutral-200 text-neutral-600'
                   }`}>
-                    {publishedCount}
+                    {uaPublishedCount}
+                  </span>
+                </button>
+
+                <button
+                  onClick={() => setFilterStatus('published_en')}
+                  className={`px-3 py-1.5 text-xs rounded transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    filterStatus === 'published_en'
+                      ? 'bg-blue-700 text-white font-medium'
+                      : 'bg-neutral-100 text-neutral-600 hover:text-blue-700 hover:bg-blue-50'
+                  }`}
+                >
+                  <span>🇬🇧 Опубліковані EN</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                    filterStatus === 'published_en' ? 'bg-blue-800 text-white' : 'bg-neutral-200 text-neutral-600'
+                  }`}>
+                    {enPublishedCount}
                   </span>
                 </button>
 
@@ -708,11 +1003,6 @@ https://www.youtube.com/watch?v=...`}
                 >
                   <EyeOff className="w-3.5 h-3.5" />
                   <span>Приховані</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
-                    filterStatus === 'hidden' ? 'bg-neutral-700 text-white' : 'bg-neutral-200 text-neutral-600'
-                  }`}>
-                    {hiddenCount}
-                  </span>
                 </button>
               </div>
             )}
@@ -730,31 +1020,32 @@ https://www.youtube.com/watch?v=...`}
               </div>
             ) : filteredArticles.length === 0 ? (
               <div className="text-center py-16 border border-dashed border-neutral-200">
-                <p className="text-neutral-500 text-sm">
-                  {filterStatus === 'hidden'
-                    ? 'Прихованих статей немає. Усі статті опубліковані на сайті.'
-                    : 'Опублікованих статей немає.'}
-                </p>
+                <p className="text-neutral-500 text-sm">Немає статей для обраного фільтра.</p>
                 <button
                   onClick={() => setFilterStatus('all')}
                   className="mt-3 text-xs text-black underline underline-offset-4 cursor-pointer"
                 >
-                  Показати всі статті
+                  Показати всі матеріали
                 </button>
               </div>
             ) : (
               <div className="divide-y divide-neutral-100">
                 {filteredArticles.map((art) => {
-                  const isPub =
+                  const isPubUa =
                     art.published === true || String(art.published) === 'true' || (art.published as any) === 1;
-                  const isToggling = togglingId === art.id;
-                  const timeDisplay = formatTimeAgoOrDate(art.createdAt, art.date, art.id);
+                  const isPubEn =
+                    art.publishedEn === true || String(art.publishedEn) === 'true' || (art.publishedEn as any) === 1;
+                  const hasEn = Boolean(art.titleEn?.trim());
+
+                  const isTogglingUa = togglingId === `ua_${art.id}`;
+                  const isTogglingEn = togglingId === `en_${art.id}`;
+                  const timeDisplay = formatTimeAgoOrDate(art.createdAt, art.date, art.id, 'ua');
 
                   return (
                     <div
                       key={art.id}
                       className={`py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 group px-3 -mx-3 transition-colors rounded ${
-                        isPub
+                        isPubUa || isPubEn
                           ? 'hover:bg-neutral-50/60'
                           : 'bg-neutral-50/50 hover:bg-neutral-100/60 border-l-2 border-neutral-300'
                       }`}
@@ -765,13 +1056,13 @@ https://www.youtube.com/watch?v=...`}
                             src={art.coverImage}
                             alt={art.title}
                             className={`w-16 h-16 sm:w-20 sm:h-20 object-cover rounded shrink-0 bg-neutral-100 ${
-                              !isPub ? 'grayscale opacity-75' : ''
+                              !isPubUa && !isPubEn ? 'grayscale opacity-75' : ''
                             }`}
                           />
                         ) : (
                           <div
                             className={`w-16 h-16 sm:w-20 sm:h-20 rounded shrink-0 flex items-center justify-center text-xs font-serif ${
-                              isPub ? 'bg-neutral-100 text-neutral-400' : 'bg-neutral-200 text-neutral-500'
+                              isPubUa ? 'bg-neutral-100 text-neutral-400' : 'bg-neutral-200 text-neutral-500'
                             }`}
                           >
                             The Impart
@@ -779,16 +1070,31 @@ https://www.youtube.com/watch?v=...`}
                         )}
                         <div>
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                            {/* Статус видимості */}
-                            {isPub ? (
-                              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                            {/* Статус UA */}
+                            {isPubUa ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                Опубліковано
+                                🇺🇦 UA: Live
                               </span>
                             ) : (
-                              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-neutral-600 bg-neutral-200/70 px-2 py-0.5 rounded">
-                                <EyeOff className="w-3 h-3 text-neutral-500" />
-                                Приховано
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+                                🇺🇦 UA: Сховано
+                              </span>
+                            )}
+
+                            {/* Статус EN */}
+                            {isPubEn ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                                🇬🇧 EN: Live
+                              </span>
+                            ) : hasEn ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
+                                🇬🇧 EN: Чернетка
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">
+                                🇬🇧 EN: Немає
                               </span>
                             )}
 
@@ -804,13 +1110,19 @@ https://www.youtube.com/watch?v=...`}
                             )}
                           </div>
 
-                          <h2
-                            className={`text-base sm:text-lg font-serif font-medium transition-colors ${
-                              isPub ? 'text-black group-hover:text-neutral-700' : 'text-neutral-600'
-                            }`}
-                          >
+                          {/* ГОЛОВНА НАЗВА В СПИСКУ ЗАВЖДИ УКРАЇНСЬКОЮ */}
+                          <h2 className="text-base sm:text-lg font-serif font-medium text-black group-hover:text-neutral-700 transition-colors">
                             {art.title}
                           </h2>
+
+                          {/* Додаткова плашка, якщо є англійський переклад */}
+                          {art.titleEn && (
+                            <p className="text-xs text-neutral-400 italic mt-0.5 flex items-center gap-1">
+                              <span>EN:</span>
+                              <span>{art.titleEn}</span>
+                            </p>
+                          )}
+
                           {art.excerpt && (
                             <p className="text-xs text-neutral-500 line-clamp-1 mt-1 max-w-xl">
                               {art.excerpt}
@@ -824,41 +1136,63 @@ https://www.youtube.com/watch?v=...`}
 
                       {/* Панель дій над статтею */}
                       <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
-                        {/* Кнопка швидкого приховування / показу */}
+                        {/* Кнопка швидкого приховування/публікації для UA */}
                         <button
-                          onClick={() => handleToggleVisibility(art)}
-                          disabled={isToggling}
-                          className={`p-2 rounded transition-colors cursor-pointer flex items-center gap-1.5 text-xs ${
-                            isPub
-                              ? 'text-neutral-500 hover:text-amber-700 hover:bg-amber-50'
-                              : 'text-neutral-600 hover:text-emerald-700 hover:bg-emerald-50'
+                          onClick={() => handleToggleUaVisibility(art)}
+                          disabled={isTogglingUa}
+                          className={`p-2 rounded transition-colors cursor-pointer flex items-center gap-1 text-xs ${
+                            isPubUa
+                              ? 'text-neutral-600 hover:text-amber-700 hover:bg-amber-50'
+                              : 'text-neutral-500 hover:text-emerald-700 hover:bg-emerald-50'
                           } disabled:opacity-50`}
                           title={
-                            isPub
-                              ? 'Приховати статтю з сайту (перевести в чернетки)'
-                              : 'Опублікувати статтю на сайті'
+                            isPubUa
+                              ? 'Сховати українську версію з сайту'
+                              : 'Опублікувати українську версію на сайті'
                           }
                         >
-                          {isToggling ? (
-                            <div className="w-4 h-4 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
-                          ) : isPub ? (
-                            <>
-                              <EyeOff className="w-4 h-4" />
-                              <span className="hidden md:inline">Сховати</span>
-                            </>
+                          {isTogglingUa ? (
+                            <div className="w-3.5 h-3.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>
-                              <Eye className="w-4 h-4 text-emerald-600" />
-                              <span className="hidden md:inline text-emerald-700 font-medium">Показати</span>
+                              <span className="text-[11px] font-medium">🇺🇦</span>
+                              <span className="hidden lg:inline">{isPubUa ? 'Сховати' : 'Показати'}</span>
                             </>
                           )}
                         </button>
+
+                        {/* Кнопка швидкого приховування/публікації для EN */}
+                        {hasEn && (
+                          <button
+                            onClick={() => handleToggleEnVisibility(art)}
+                            disabled={isTogglingEn}
+                            className={`p-2 rounded transition-colors cursor-pointer flex items-center gap-1 text-xs ${
+                              isPubEn
+                                ? 'text-neutral-600 hover:text-amber-700 hover:bg-amber-50'
+                                : 'text-neutral-500 hover:text-blue-700 hover:bg-blue-50'
+                            } disabled:opacity-50`}
+                            title={
+                              isPubEn
+                                ? 'Сховати англійську версію з сайту'
+                                : 'Опублікувати англійську версію на сайті'
+                            }
+                          >
+                            {isTogglingEn ? (
+                              <div className="w-3.5 h-3.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
+                            ) : (
+                              <>
+                                <span className="text-[11px] font-medium">🇬🇧</span>
+                                <span className="hidden lg:inline">{isPubEn ? 'Hide' : 'Publish'}</span>
+                              </>
+                            )}
+                          </button>
+                        )}
 
                         {/* Перегляд на сайті */}
                         <button
                           onClick={() => onViewArticleOnSite(art.id)}
                           className="p-2 text-neutral-500 hover:text-black hover:bg-neutral-100 rounded transition-colors cursor-pointer"
-                          title="Переглянути статтю"
+                          title="Переглянути на сайті"
                         >
                           <ExternalLink className="w-4 h-4" />
                         </button>
@@ -867,7 +1201,7 @@ https://www.youtube.com/watch?v=...`}
                         <button
                           onClick={() => handleStartEdit(art)}
                           className="p-2 text-neutral-500 hover:text-black hover:bg-neutral-100 rounded transition-colors cursor-pointer"
-                          title="Редагувати статтю"
+                          title="Редагувати статтю (UA / EN)"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>

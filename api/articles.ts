@@ -2,6 +2,7 @@ import { neon } from '@neondatabase/serverless';
 
 export interface Article {
   id: string;
+  // Українська версія (основна)
   title: string;
   excerpt: string;
   content: string;
@@ -12,9 +13,16 @@ export interface Article {
   readTime?: string;
   createdAt?: string;
   published: boolean;
+
+  // Англійська версія
+  titleEn?: string;
+  excerptEn?: string;
+  contentEn?: string;
+  categoryEn?: string;
+  publishedEn?: boolean;
 }
 
-// Початкові статті за замовчуванням
+// Початкові статті за замовчуванням з українською та англійською версіями
 const DEFAULT_ARTICLES: Article[] = [
   {
     id: '1',
@@ -25,8 +33,12 @@ const DEFAULT_ARTICLES: Article[] = [
     author: 'Редакція The Impart',
     coverImage: 'https://images.unsplash.com/photo-1507842229451-7f01be7a50d4?auto=format&fit=crop&w=1400&q=80',
     date: '29 вересня 2026',
-    readTime: '4 хв читання',
     published: true,
+    titleEn: 'Silence as a Space for a New Form of Thought',
+    categoryEn: 'Philosophy',
+    excerptEn: 'In a world of information overflow, the ability to slow down transforms into a rare aesthetic and intellectual virtue.',
+    contentEn: "True depth begins where the background noise fades away. Modern pace of life imposes a sense of continuous presence, yet it is the pauses between words that create rhythm, and the empty space on canvas that defines the composition.\n\nWhen we discard superfluous details, essence remains. This is not merely minimalism in visual terms — it is a way of interacting with the world where every detail acquires its own weight.\n\nThe art of attentiveness requires inner quiet. In silence, ideas are born that do not need loud proclamation to change our perception of reality.",
+    publishedEn: true,
   },
   {
     id: '2',
@@ -37,16 +49,20 @@ const DEFAULT_ARTICLES: Article[] = [
     author: 'Олена Кравченко',
     coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1400&q=80',
     date: '28 вересня 2026',
-    readTime: '3 хв читання',
     published: true,
+    titleEn: 'The Architecture of Observation: How Space Shapes Experience',
+    categoryEn: 'Architecture',
+    excerptEn: 'Clean lines, natural light, and the absence of visual noise as the foundation of conscious environmental perception.',
+    contentEn: "The space around us is never neutral. It either disperses our attention or gathers it into a single focal point. Architecture that respects the individual does not seek to overwhelm by scale — it creates conditions for interior dialogue.\n\nLight descending through tall windows, the texture of natural stone or wood, a white wall where tree shadows play in the late afternoon — these are simple elements that restore our sense of presence in the here and now.",
+    publishedEn: true,
   },
 ];
 
-// Резервний рядок підключення до Neon (використовується, якщо змінні оточення не задані або некоректні)
+// Резервний рядок підключення до Neon
 const DEFAULT_NEON_URL =
   'postgresql://neondb_owner:npg_YxGNIvz6CD1r@ep-dawn-dust-b7e8cria-pooler.c-13.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
 
-// Очищення рядка підключення: автоматично витягує чистий postgresql://... навіть якщо передано з psql, лапками чи назвою змінної
+// Очищення рядка підключення: автоматично витягує чистий postgresql://...
 export function cleanConnectionString(raw?: string): string | undefined {
   if (!raw) return undefined;
   const str = raw.trim();
@@ -122,12 +138,22 @@ export async function initDb() {
       );
     `;
 
+    // Переконуємось, що існують колонки для англійської версії статті
+    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS title_en TEXT;`;
+    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS excerpt_en TEXT;`;
+    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS content_en TEXT;`;
+    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS category_en VARCHAR(100);`;
+    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS published_en BOOLEAN DEFAULT false;`;
+
     // Перевіряємо наявність записів
     const rows = await sql`SELECT count(*) as count FROM articles;`;
     if (parseInt(rows[0]?.count || '0', 10) === 0) {
       for (const a of DEFAULT_ARTICLES) {
         await sql`
-          INSERT INTO articles (id, title, excerpt, content, category, author, cover_image, date, read_time, published)
+          INSERT INTO articles (
+            id, title, excerpt, content, category, author, cover_image, date, read_time, published,
+            title_en, excerpt_en, content_en, category_en, published_en
+          )
           VALUES (
             ${a.id}, 
             ${a.title}, 
@@ -137,8 +163,13 @@ export async function initDb() {
             ${a.author}, 
             ${a.coverImage || null}, 
             ${a.date}, 
-            ${a.readTime}, 
-            ${a.published}
+            ${a.readTime || null}, 
+            ${a.published},
+            ${a.titleEn || null},
+            ${a.excerptEn || null},
+            ${a.contentEn || null},
+            ${a.categoryEn || null},
+            ${a.publishedEn ?? false}
           )
           ON CONFLICT (id) DO NOTHING;
         `;
@@ -146,7 +177,7 @@ export async function initDb() {
     }
 
     isTableInitialized = true;
-    console.log('Postgres table "articles" is ready via @neondatabase/serverless.');
+    console.log('Postgres table "articles" is ready with multilingual columns.');
   } catch (error) {
     console.error('Failed to initialize Postgres table with Neon:', error);
     throw error;
@@ -169,7 +200,12 @@ export async function getArticles(): Promise<Article[]> {
         date, 
         read_time as "readTime", 
         created_at as "createdAt",
-        published 
+        published,
+        title_en as "titleEn",
+        excerpt_en as "excerptEn",
+        content_en as "contentEn",
+        category_en as "categoryEn",
+        published_en as "publishedEn"
       FROM articles 
       ORDER BY created_at DESC;
     `;
@@ -186,6 +222,11 @@ export async function getArticles(): Promise<Article[]> {
       readTime: r.readTime ? String(r.readTime) : undefined,
       createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
       published: r.published === true || String(r.published) === 'true' || r.published === 1,
+      titleEn: r.titleEn ? String(r.titleEn) : undefined,
+      excerptEn: r.excerptEn ? String(r.excerptEn) : undefined,
+      contentEn: r.contentEn ? String(r.contentEn) : undefined,
+      categoryEn: r.categoryEn ? String(r.categoryEn) : undefined,
+      publishedEn: r.publishedEn === true || String(r.publishedEn) === 'true' || r.publishedEn === 1,
     }));
   } catch (error) {
     console.error('Neon query error in getArticles:', error);
@@ -198,6 +239,8 @@ export async function saveArticle(article: Article): Promise<Article> {
   const sql = getNeonSql();
 
   const isPub = article.published !== false && String(article.published) !== 'false';
+  const isPubEn = article.publishedEn === true || String(article.publishedEn) === 'true' || (article.publishedEn as any) === 1;
+
   const id = String(article.id || Date.now().toString());
   const title = String(article.title || '').trim();
   const excerpt = String(article.excerpt || '').trim();
@@ -208,9 +251,17 @@ export async function saveArticle(article: Article): Promise<Article> {
   const date = String(article.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }));
   const readTime = article.readTime ? String(article.readTime) : '';
 
+  const titleEn = article.titleEn ? String(article.titleEn).trim() : null;
+  const excerptEn = article.excerptEn ? String(article.excerptEn).trim() : null;
+  const contentEn = article.contentEn ? String(article.contentEn).trim() : null;
+  const categoryEn = article.categoryEn ? String(article.categoryEn).trim() : null;
+
   try {
     await sql`
-      INSERT INTO articles (id, title, excerpt, content, category, author, cover_image, date, read_time, published)
+      INSERT INTO articles (
+        id, title, excerpt, content, category, author, cover_image, date, read_time, published,
+        title_en, excerpt_en, content_en, category_en, published_en
+      )
       VALUES (
         ${id}, 
         ${title}, 
@@ -221,7 +272,12 @@ export async function saveArticle(article: Article): Promise<Article> {
         ${coverImage}, 
         ${date}, 
         ${readTime}, 
-        ${isPub}
+        ${isPub},
+        ${titleEn},
+        ${excerptEn},
+        ${contentEn},
+        ${categoryEn},
+        ${isPubEn}
       )
       ON CONFLICT (id) DO UPDATE SET
         title = EXCLUDED.title,
@@ -232,7 +288,12 @@ export async function saveArticle(article: Article): Promise<Article> {
         cover_image = EXCLUDED.cover_image,
         date = EXCLUDED.date,
         read_time = EXCLUDED.read_time,
-        published = EXCLUDED.published;
+        published = EXCLUDED.published,
+        title_en = EXCLUDED.title_en,
+        excerpt_en = EXCLUDED.excerpt_en,
+        content_en = EXCLUDED.content_en,
+        category_en = EXCLUDED.category_en,
+        published_en = EXCLUDED.published_en;
     `;
 
     console.log(`Article "${title}" (ID: ${id}) successfully saved to Neon.`);
@@ -248,6 +309,11 @@ export async function saveArticle(article: Article): Promise<Article> {
       readTime: readTime || undefined,
       createdAt: article.createdAt || new Date().toISOString(),
       published: isPub,
+      titleEn: titleEn || undefined,
+      excerptEn: excerptEn || undefined,
+      contentEn: contentEn || undefined,
+      categoryEn: categoryEn || undefined,
+      publishedEn: isPubEn,
     };
   } catch (error: any) {
     console.error('Failed to save article to Neon:', error);
@@ -329,8 +395,15 @@ export default async function handler(req: any, res: any) {
         author: body.author ? String(body.author).trim() : 'Редакція The Impart',
         coverImage: body.coverImage ? String(body.coverImage).trim() : undefined,
         date: body.date ? String(body.date) : new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
-        readTime: body.readTime ? String(body.readTime) : '3 хв читання',
+        readTime: body.readTime ? String(body.readTime) : undefined,
+        createdAt: body.createdAt ? String(body.createdAt) : undefined,
         published: body.published !== false && String(body.published) !== 'false',
+        // Англійські поля
+        titleEn: body.titleEn ? String(body.titleEn).trim() : undefined,
+        excerptEn: body.excerptEn ? String(body.excerptEn).trim() : undefined,
+        contentEn: body.contentEn ? String(body.contentEn).trim() : undefined,
+        categoryEn: body.categoryEn ? String(body.categoryEn).trim() : undefined,
+        publishedEn: body.publishedEn === true || String(body.publishedEn) === 'true',
       });
 
       return res.status(200).json(saved);

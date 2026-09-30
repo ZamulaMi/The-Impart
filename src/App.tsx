@@ -5,13 +5,13 @@
 
 import { useState, useEffect } from 'react';
 import { Search } from 'lucide-react';
-import { Article } from './types';
-import { INITIAL_ARTICLES } from './data/initialArticles';
+import { Article, SiteLanguage } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
 import { formatTimeAgoOrDate } from './utils/date';
 
 const STORAGE_KEY = 'the_impart_articles_v1';
+const LANG_STORAGE_KEY = 'the_impart_lang_v1';
 
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState<'main' | 'admin'>(() => {
@@ -24,9 +24,26 @@ export default function App() {
       : 'main';
   });
 
+  const [siteLang, setSiteLang] = useState<SiteLanguage>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(LANG_STORAGE_KEY);
+      if (saved === 'en' || saved === 'ua') return saved;
+    }
+    return 'ua';
+  });
+
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  const handleSetLang = (lang: SiteLanguage) => {
+    setSiteLang(lang);
+    try {
+      localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const fetchArticlesFromDb = async () => {
     try {
@@ -99,13 +116,11 @@ export default function App() {
       } else {
         setSelectedArticleId(null);
       }
-      // Оновлюємо статті при поверненні на головну
-      fetchArticlesFromDb();
     }
   };
 
   const handleSaveArticle = async (article: Article) => {
-    // Збереження у базу даних Vercel Postgres
+    // Збереження у базу даних Neon Postgres
     const res = await fetch('/api/articles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -144,12 +159,10 @@ export default function App() {
       return updated;
     });
 
-    // Додатково синхронізуємо повний список
     await fetchArticlesFromDb();
   };
 
   const handleDeleteArticle = async (id: string) => {
-    // Видалення з бази даних Vercel Postgres
     try {
       const res = await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -176,7 +189,7 @@ export default function App() {
     }
   };
 
-  // Режим адмін-панелі (доступний тільки за посиланням)
+  // Режим адмін-панелі
   if (currentRoute === 'admin') {
     return (
       <AdminPanel
@@ -189,14 +202,20 @@ export default function App() {
     );
   }
 
-  const publishedArticles = articles.filter(
-    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
-  );
+  // Фільтрація статей відповідно до обраної мови
+  const publishedArticles = articles.filter((a) => {
+    if (siteLang === 'en') {
+      const isPubEn = a.publishedEn === true || String(a.publishedEn) === 'true';
+      return isPubEn && Boolean(a.titleEn?.trim());
+    }
+    return a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
+  });
+
   const selectedArticle = articles.find((a) => a.id === selectedArticleId);
 
   return (
     <div className="min-h-screen w-full bg-white text-black flex flex-col justify-between">
-      {/* Шапка (Header) */}
+      {/* Шапка (Header) - повернено чистий початковий вигляд без перемикача */}
       <header className="w-full bg-white px-6 sm:px-12 md:px-16 py-6 sm:py-8 flex items-center justify-between">
         <button
           onClick={() => setSelectedArticleId(null)}
@@ -205,6 +224,7 @@ export default function App() {
         >
           The Impart
         </button>
+
         <button
           type="button"
           aria-label="Пошук"
@@ -220,7 +240,9 @@ export default function App() {
           {selectedArticle ? (
             <ArticleView
               article={selectedArticle}
+              lang={siteLang}
               onBack={() => setSelectedArticleId(null)}
+              onSwitchLang={handleSetLang}
             />
           ) : (
             <div className="max-w-6xl mx-auto px-6 sm:px-12 md:px-16 py-8 sm:py-12">
@@ -231,100 +253,128 @@ export default function App() {
               ) : publishedArticles.length === 0 ? (
                 <div className="py-24 text-center max-w-md mx-auto">
                   <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-2">
-                    У базі даних наразі немає опублікованих статей.
+                    {siteLang === 'en'
+                      ? 'No articles published in English yet.'
+                      : 'У базі даних наразі немає опублікованих статей.'}
                   </p>
                   <p className="text-xs text-neutral-400 font-sans">
-                    Створюйте та публікуйте матеріали через панель адміністратора.
+                    {siteLang === 'en' ? (
+                      <button
+                        onClick={() => handleSetLang('ua')}
+                        className="text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
+                      >
+                        Switch to Ukrainian version to read materials.
+                      </button>
+                    ) : (
+                      'Створюйте та публікуйте матеріали через панель адміністратора.'
+                    )}
                   </p>
                 </div>
               ) : (
                 <div className="space-y-16">
                   {/* Головна стаття (перша у списку) */}
-                  {publishedArticles[0] && (
-                    <article
-                      onClick={() => {
-                        setSelectedArticleId(publishedArticles[0].id);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="group cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-8 items-center border-b border-neutral-100 pb-16"
-                    >
-                      {publishedArticles[0].coverImage && (
-                        <div className="lg:col-span-7 aspect-[16/10] overflow-hidden bg-neutral-100">
-                          <img
-                            src={publishedArticles[0].coverImage}
-                            alt={publishedArticles[0].title}
-                            className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-                          />
-                        </div>
-                      )}
-                      <div className={publishedArticles[0].coverImage ? 'lg:col-span-5' : 'lg:col-span-12'}>
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400 mb-3">
-                          <span>{publishedArticles[0].category}</span>
-                          <span>•</span>
-                          <span>{formatTimeAgoOrDate(publishedArticles[0].createdAt, publishedArticles[0].date, publishedArticles[0].id)}</span>
-                        </div>
-                        <h2
-                          className="text-2xl sm:text-3xl lg:text-4xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-4"
-                          style={{ fontFamily: "'Playfair Display', serif" }}
-                        >
-                          {publishedArticles[0].title}
-                        </h2>
-                        {publishedArticles[0].excerpt && (
-                          <p className="text-sm sm:text-base text-neutral-600 leading-relaxed font-sans mb-5 line-clamp-3">
-                            {publishedArticles[0].excerpt}
-                          </p>
+                  {publishedArticles[0] && (() => {
+                    const hero = publishedArticles[0];
+                    const isEn = siteLang === 'en';
+                    const title = isEn && hero.titleEn ? hero.titleEn : hero.title;
+                    const excerpt = isEn && hero.excerptEn ? hero.excerptEn : hero.excerpt;
+                    const category = isEn && hero.categoryEn ? hero.categoryEn : hero.category;
+                    const timeAgo = formatTimeAgoOrDate(hero.createdAt, hero.date, hero.id, siteLang);
+
+                    return (
+                      <article
+                        onClick={() => {
+                          setSelectedArticleId(hero.id);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        className="group cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-8 items-center border-b border-neutral-100 pb-16"
+                      >
+                        {hero.coverImage && (
+                          <div className="lg:col-span-7 aspect-[16/10] overflow-hidden bg-neutral-100 rounded-lg">
+                            <img
+                              src={hero.coverImage}
+                              alt={title}
+                              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                            />
+                          </div>
                         )}
-                        <div className="text-xs text-neutral-400">
-                          {publishedArticles[0].author}
+                        <div className={hero.coverImage ? 'lg:col-span-5' : 'lg:col-span-12'}>
+                          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400 mb-3">
+                            <span>{category}</span>
+                            <span>•</span>
+                            <span>{timeAgo}</span>
+                          </div>
+                          <h2
+                            className="text-2xl sm:text-3xl lg:text-4xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-4"
+                            style={{ fontFamily: "'Playfair Display', serif" }}
+                          >
+                            {title}
+                          </h2>
+                          {excerpt && (
+                            <p className="text-sm sm:text-base text-neutral-600 leading-relaxed font-sans mb-5 line-clamp-3">
+                              {excerpt}
+                            </p>
+                          )}
+                          <div className="text-xs text-neutral-400">
+                            {hero.author}
+                          </div>
                         </div>
-                      </div>
-                    </article>
-                  )}
+                      </article>
+                    );
+                  })()}
 
                   {/* Сітка наступних статей */}
                   {publishedArticles.length > 1 && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-                      {publishedArticles.slice(1).map((article) => (
-                        <article
-                          key={article.id}
-                          onClick={() => {
-                            setSelectedArticleId(article.id);
-                            window.scrollTo({ top: 0, behavior: 'smooth' });
-                          }}
-                          className="group cursor-pointer flex flex-col justify-between"
-                        >
-                          <div>
-                            {article.coverImage && (
-                              <div className="aspect-[16/10] mb-5 overflow-hidden bg-neutral-100">
-                                <img
-                                  src={article.coverImage}
-                                  alt={article.title}
-                                  className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-                                />
+                      {publishedArticles.slice(1).map((article) => {
+                        const isEn = siteLang === 'en';
+                        const title = isEn && article.titleEn ? article.titleEn : article.title;
+                        const excerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
+                        const category = isEn && article.categoryEn ? article.categoryEn : article.category;
+                        const timeAgo = formatTimeAgoOrDate(article.createdAt, article.date, article.id, siteLang);
+
+                        return (
+                          <article
+                            key={article.id}
+                            onClick={() => {
+                              setSelectedArticleId(article.id);
+                              window.scrollTo({ top: 0, behavior: 'smooth' });
+                            }}
+                            className="group cursor-pointer flex flex-col justify-between"
+                          >
+                            <div>
+                              {article.coverImage && (
+                                <div className="aspect-[16/10] mb-5 overflow-hidden bg-neutral-100 rounded-lg">
+                                  <img
+                                    src={article.coverImage}
+                                    alt={title}
+                                    className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+                                  />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
+                                <span>{category}</span>
+                                <span>•</span>
+                                <span>{timeAgo}</span>
                               </div>
-                            )}
-                            <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
-                              <span>{article.category}</span>
-                              <span>•</span>
-                              <span>{formatTimeAgoOrDate(article.createdAt, article.date, article.id)}</span>
+                              <h3
+                                className="text-lg sm:text-xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-2"
+                                style={{ fontFamily: "'Playfair Display', serif" }}
+                              >
+                                {title}
+                              </h3>
+                              {excerpt && (
+                                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed font-sans line-clamp-2 mb-3">
+                                  {excerpt}
+                                </p>
+                              )}
                             </div>
-                            <h3
-                              className="text-lg sm:text-xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-2"
-                              style={{ fontFamily: "'Playfair Display', serif" }}
-                            >
-                              {article.title}
-                            </h3>
-                            {article.excerpt && (
-                              <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed font-sans line-clamp-2 mb-3">
-                                {article.excerpt}
-                              </p>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-neutral-400 pt-3 border-t border-neutral-100">
-                            {article.author}
-                          </div>
-                        </article>
-                      ))}
+                            <div className="text-[11px] text-neutral-400 pt-3 border-t border-neutral-100">
+                              {article.author}
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -338,12 +388,17 @@ export default function App() {
       </main>
 
       {/* Футер */}
-      <footer className="w-full bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12">
+      <footer className="w-full bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 border-t border-neutral-100">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
           <div className="flex flex-col items-start">
             <span className="text-base sm:text-lg font-normal tracking-normal text-black font-sans select-none">
               The Impart
             </span>
+            <p className="text-xs text-neutral-400 mt-1">
+              {siteLang === 'en'
+                ? 'Journal of aesthetics, philosophy, and mindful reflection.'
+                : 'Журнал естетики, філософії та усвідомленого споглядання.'}
+            </p>
 
             <div className="mt-3.5 flex items-center gap-4 text-neutral-600">
               {/* Telegram */}
@@ -397,27 +452,42 @@ export default function App() {
                   <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                 </svg>
               </a>
-
-              {/* Threads */}
-              <a
-                href="https://threads.net"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Threads"
-                className="text-neutral-600 hover:text-black transition-colors"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 192 192">
-                  <path d="M141.537 88.9883C140.71 88.5919 139.87 88.2104 139.019 87.8451C137.537 60.5382 122.616 44.905 97.5619 44.745C97.4184 44.7441 97.2749 44.7441 97.1324 44.745C75.2647 44.745 57.7346 59.8336 54.3403 82.2604C53.7937 85.8677 53.5186 89.5492 53.5186 93.2687C53.5186 96.6974 53.7548 100.089 54.2217 103.407C57.4419 126.31 75.1472 142.255 97.1324 142.255C110.158 142.255 122.569 135.539 130.655 124.646C137.108 115.955 140.548 104.708 140.852 93.4116C140.916 91.0772 141.144 89.5947 141.537 88.9883ZM97.1324 127.255C82.8835 127.255 70.478 116.326 68.3242 99.4185C68.0437 97.2183 67.8997 94.9452 67.8997 92.6322C67.8997 90.5284 68.0267 88.4682 68.2748 86.4674C70.6723 70.1983 82.9733 59.745 97.1324 59.745C114.773 59.745 123.639 71.9338 124.777 92.748C117.844 89.7042 109.112 87.9712 99.4891 87.9712C81.4255 87.9712 70.6272 97.4338 70.6272 110.871C70.6272 121.72 79.508 128.854 92.0526 128.854C104.387 128.854 113.682 122.584 118.232 112.571C121.439 105.521 122.951 97.4379 123.082 89.2829C127.324 91.5323 130.551 94.671 132.378 98.4118C134.78 103.324 135.26 109.529 133.82 116.48C131.026 129.972 119.574 140.755 106.333 144.408C103.321 145.24 100.244 145.688 97.1324 145.688C69.043 145.688 45.4527 124.646 41.3496 95.8336C40.7937 91.9333 40.5186 87.9482 40.5186 83.9168C40.5186 52.3392 65.5786 26.6875 97.1324 26.6875C128.847 26.6875 153.254 52.1287 153.254 83.9168C153.254 90.9634 152.029 97.8091 149.697 104.227L163.766 109.348C166.726 101.218 168.254 92.6517 168.254 83.9168C168.254 43.8821 136.388 11.6875 97.1324 11.6875C57.4897 11.6875 25.5186 43.8821 25.5186 83.9168C25.5186 89.0478 25.8677 94.1166 26.5724 99.0768C31.7828 135.687 61.7606 160.688 97.1324 160.688C101.077 160.688 104.992 160.12 108.825 159.062C125.682 154.412 140.261 140.697 143.818 123.513C145.651 114.664 145.039 106.744 142.046 100.575C141.905 100.285 141.748 100.007 141.576 99.7409L141.537 88.9883ZM97.8105 115.854C90.7258 115.854 85.6272 111.458 85.6272 105.109C85.6272 98.7188 90.8711 94.9712 98.3752 94.9712C103.541 94.9712 108.318 95.897 112.57 97.6441C111.758 108.47 106.182 115.854 97.8105 115.854Z" />
-                </svg>
-              </a>
             </div>
           </div>
 
-          {/* Права сторона: перемикач мови */}
-          <div className="flex items-center gap-1.5 text-xs sm:text-sm font-sans tracking-wide select-none">
-            <span className="font-semibold text-black cursor-default">UA</span>
-            <span className="text-neutral-300">/</span>
-            <span className="text-neutral-400 hover:text-black transition-colors cursor-pointer">EN</span>
+          {/* Права частина футера: Перемикач мови UA / EN та копірайт */}
+          <div className="flex flex-col sm:items-end gap-3">
+            <div className="flex items-center text-xs tracking-wider font-sans select-none">
+              <button
+                type="button"
+                onClick={() => handleSetLang('ua')}
+                className={`py-1 transition-colors cursor-pointer ${
+                  siteLang === 'ua'
+                    ? 'font-medium text-black'
+                    : 'text-neutral-400 hover:text-black'
+                }`}
+                title="Українська версія"
+              >
+                UA
+              </button>
+              <span className="mx-2 text-neutral-300">/</span>
+              <button
+                type="button"
+                onClick={() => handleSetLang('en')}
+                className={`py-1 transition-colors cursor-pointer ${
+                  siteLang === 'en'
+                    ? 'font-medium text-black'
+                    : 'text-neutral-400 hover:text-black'
+                }`}
+                title="English version"
+              >
+                EN
+              </button>
+            </div>
+
+            <span className="text-xs text-neutral-400 font-sans">
+              © {new Date().getFullYear()} The Impart. All rights reserved.
+            </span>
           </div>
         </div>
       </footer>
