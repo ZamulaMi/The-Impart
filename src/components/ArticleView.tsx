@@ -1,6 +1,8 @@
 import React from 'react';
 import { ArrowLeft, EyeOff } from 'lucide-react';
 import { Article } from '../types';
+import { formatTimeAgoOrDate } from '../utils/date';
+import { ContentRenderer } from './ContentRenderer';
 
 interface ArticleViewProps {
   article: Article;
@@ -9,6 +11,7 @@ interface ArticleViewProps {
 
 export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack }) => {
   const isHidden = article.published === false || String(article.published) === 'false';
+  const timeDisplay = formatTimeAgoOrDate(article.createdAt, article.date, article.id);
 
   return (
     <article className="max-w-3xl mx-auto px-6 sm:px-12 py-10 sm:py-16">
@@ -29,10 +32,15 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack }) => 
         )}
       </div>
 
+      {/* Рубрика та час публікації (без часу читання) */}
       <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-neutral-500 mb-4">
         <span>{article.category}</span>
-        <span className="text-neutral-300">•</span>
-        <span>{article.readTime}</span>
+        {timeDisplay && (
+          <>
+            <span className="text-neutral-300">•</span>
+            <span>{timeDisplay}</span>
+          </>
+        )}
       </div>
 
       <h1
@@ -44,11 +52,11 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack }) => 
 
       <div className="flex items-center justify-between py-4 border-y border-neutral-100 mb-8 text-xs text-neutral-500">
         <span>{article.author}</span>
-        <span>{article.date}</span>
+        <span>{timeDisplay}</span>
       </div>
 
       {article.coverImage && (
-        <div className="mb-10 aspect-[16/9] w-full overflow-hidden bg-neutral-100">
+        <div className="mb-10 aspect-[16/9] w-full overflow-hidden bg-neutral-100 rounded-lg">
           <img
             src={article.coverImage}
             alt={article.title}
@@ -63,12 +71,9 @@ export const ArticleView: React.FC<ArticleViewProps> = ({ article, onBack }) => 
         </p>
       )}
 
-      <div className="prose prose-neutral max-w-none text-base sm:text-lg leading-relaxed text-neutral-800 space-y-6 font-serif">
-        {article.content.split('\n\n').map((paragraph, idx) => (
-          <p key={idx} className="whitespace-pre-line">
-            {paragraph}
-          </p>
-        ))}
+      {/* Рендеринг тексту з підтримкою посилань на фото та відео з YouTube */}
+      <div className="prose prose-neutral max-w-none text-base sm:text-lg leading-relaxed text-neutral-800">
+        <ContentRenderer content={article.content} />
       </div>
     </article>
   );

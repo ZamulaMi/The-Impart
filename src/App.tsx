@@ -9,6 +9,7 @@ import { Article } from './types';
 import { INITIAL_ARTICLES } from './data/initialArticles';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
+import { formatTimeAgoOrDate } from './utils/date';
 
 const STORAGE_KEY = 'the_impart_articles_v1';
 
@@ -260,7 +261,7 @@ export default function App() {
                         <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400 mb-3">
                           <span>{publishedArticles[0].category}</span>
                           <span>•</span>
-                          <span>{publishedArticles[0].readTime}</span>
+                          <span>{formatTimeAgoOrDate(publishedArticles[0].createdAt, publishedArticles[0].date, publishedArticles[0].id)}</span>
                         </div>
                         <h2
                           className="text-2xl sm:text-3xl lg:text-4xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-4"
@@ -274,7 +275,7 @@ export default function App() {
                           </p>
                         )}
                         <div className="text-xs text-neutral-400">
-                          {publishedArticles[0].author} — {publishedArticles[0].date}
+                          {publishedArticles[0].author}
                         </div>
                       </div>
                     </article>
@@ -305,7 +306,7 @@ export default function App() {
                             <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
                               <span>{article.category}</span>
                               <span>•</span>
-                              <span>{article.readTime}</span>
+                              <span>{formatTimeAgoOrDate(article.createdAt, article.date, article.id)}</span>
                             </div>
                             <h3
                               className="text-lg sm:text-xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-2"
@@ -320,7 +321,7 @@ export default function App() {
                             )}
                           </div>
                           <div className="text-[11px] text-neutral-400 pt-3 border-t border-neutral-100">
-                            {article.author} — {article.date}
+                            {article.author}
                           </div>
                         </article>
                       ))}

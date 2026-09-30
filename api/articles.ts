@@ -9,7 +9,8 @@ export interface Article {
   author: string;
   coverImage?: string;
   date: string;
-  readTime: string;
+  readTime?: string;
+  createdAt?: string;
   published: boolean;
 }
 
@@ -167,6 +168,7 @@ export async function getArticles(): Promise<Article[]> {
         cover_image as "coverImage", 
         date, 
         read_time as "readTime", 
+        created_at as "createdAt",
         published 
       FROM articles 
       ORDER BY created_at DESC;
@@ -181,7 +183,8 @@ export async function getArticles(): Promise<Article[]> {
       author: String(r.author || 'Редакція The Impart'),
       coverImage: r.coverImage || undefined,
       date: String(r.date || ''),
-      readTime: String(r.readTime || '3 хв читання'),
+      readTime: r.readTime ? String(r.readTime) : undefined,
+      createdAt: r.createdAt ? new Date(r.createdAt).toISOString() : undefined,
       published: r.published === true || String(r.published) === 'true' || r.published === 1,
     }));
   } catch (error) {
@@ -203,7 +206,7 @@ export async function saveArticle(article: Article): Promise<Article> {
   const author = String(article.author || 'Редакція The Impart').trim();
   const coverImage = article.coverImage ? String(article.coverImage).trim() : null;
   const date = String(article.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }));
-  const readTime = String(article.readTime || '3 хв читання');
+  const readTime = article.readTime ? String(article.readTime) : '';
 
   try {
     await sql`
@@ -242,7 +245,8 @@ export async function saveArticle(article: Article): Promise<Article> {
       author,
       coverImage: coverImage || undefined,
       date,
-      readTime,
+      readTime: readTime || undefined,
+      createdAt: article.createdAt || new Date().toISOString(),
       published: isPub,
     };
   } catch (error: any) {

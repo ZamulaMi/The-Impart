@@ -9,9 +9,13 @@ import {
   Check,
   ExternalLink,
   Globe,
-  SlidersHorizontal,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  X,
 } from 'lucide-react';
 import { Article } from '../types';
+import { formatTimeAgoOrDate } from '../utils/date';
+import { ContentRenderer } from './ContentRenderer';
 
 interface AdminPanelProps {
   articles: Article[];
@@ -36,6 +40,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [filterStatus, setFilterStatus] = useState<'all' | 'published' | 'hidden'>('all');
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
+  // Вкладка редагування: 'edit' (текст) або 'preview' (попередній перегляд медіа)
+  const [editorTab, setEditorTab] = useState<'edit' | 'preview'>('edit');
+
+  // Модальне вікно вставки фото або YouTube
+  const [mediaDialog, setMediaDialog] = useState<{
+    type: 'photo' | 'youtube';
+    url: string;
+    caption: string;
+  } | null>(null);
+
   const showNotification = (msg: string) => {
     setNotification(msg);
     setTimeout(() => setNotification(null), 4000);
@@ -44,6 +58,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleStartCreate = () => {
     setErrorMsg(null);
     setIsCreatingNew(true);
+    setEditorTab('edit');
     setEditingArticle({
       id: Date.now().toString(),
       title: '',
@@ -53,7 +68,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       author: 'Редакція The Impart',
       coverImage: '',
       date: new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
-      readTime: '3 хв читання',
       published: true,
     });
   };
@@ -61,6 +75,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleStartEdit = (article: Article) => {
     setErrorMsg(null);
     setIsCreatingNew(false);
+    setEditorTab('edit');
     setEditingArticle({ ...article });
   };
 
@@ -68,6 +83,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setErrorMsg(null);
     setEditingArticle(null);
     setIsCreatingNew(false);
+    setEditorTab('edit');
   };
 
   // Швидке перемикання видимості статті (опублікована / прихована)
@@ -95,6 +111,38 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
+  const handleInsertMedia = () => {
+    if (!mediaDialog || !mediaDialog.url.trim()) {
+      setMediaDialog(null);
+      return;
+    }
+
+    const trimmedUrl = mediaDialog.url.trim();
+    let snippet = '';
+
+    if (mediaDialog.type === 'youtube') {
+      snippet = `\n\n${trimmedUrl}\n\n`;
+    } else {
+      if (mediaDialog.caption.trim()) {
+        snippet = `\n\n![${mediaDialog.caption.trim()}](${trimmedUrl})\n\n`;
+      } else {
+        snippet = `\n\n${trimmedUrl}\n\n`;
+      }
+    }
+
+    setEditingArticle((prev) => ({
+      ...prev,
+      content: (prev?.content || '').trimEnd() + snippet,
+    }));
+
+    showNotification(
+      mediaDialog.type === 'youtube'
+        ? 'Посилання на YouTube додано до статті'
+        : 'Посилання на фото додано до статті'
+    );
+    setMediaDialog(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingArticle || !editingArticle.title?.trim()) {
@@ -116,7 +164,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       author: editingArticle.author?.trim() || 'Редакція The Impart',
       coverImage: editingArticle.coverImage?.trim() || undefined,
       date: editingArticle.date || new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
-      readTime: editingArticle.readTime || '3 хв читання',
+      createdAt: editingArticle.createdAt || new Date().toISOString(),
       published: isPub,
     };
 
@@ -201,6 +249,93 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* Діалог швидкої вставки посилання на Фото або YouTube */}
+      {mediaDialog && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 border border-neutral-200 animate-scale-up">
+            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+              <div className="flex items-center gap-2">
+                {mediaDialog.type === 'youtube' ? (
+                  <VideoIcon className="w-5 h-5 text-red-600" />
+                ) : (
+                  <ImageIcon className="w-5 h-5 text-neutral-700" />
+                )}
+                <h3 className="text-sm font-medium text-black">
+                  {mediaDialog.type === 'youtube'
+                    ? 'Вставити відео з YouTube'
+                    : 'Вставити фото у статтю'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setMediaDialog(null)}
+                className="text-neutral-400 hover:text-black cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-left">
+              <div>
+                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                  {mediaDialog.type === 'youtube' ? 'Посилання на YouTube відео *' : 'Посилання на фото (URL) *'}
+                </label>
+                <input
+                  type="url"
+                  autoFocus
+                  placeholder={
+                    mediaDialog.type === 'youtube'
+                      ? 'https://www.youtube.com/watch?v=... або https://youtu.be/...'
+                      : 'https://images.unsplash.com/... або https://...jpg'
+                  }
+                  value={mediaDialog.url}
+                  onChange={(e) => setMediaDialog({ ...mediaDialog, url: e.target.value })}
+                  className="w-full text-sm border border-neutral-200 rounded p-2.5 focus:border-black focus:outline-none font-sans"
+                />
+              </div>
+
+              {mediaDialog.type === 'photo' && (
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                    Підпис до фото (необов'язково)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Короткий підпис або автор фото"
+                    value={mediaDialog.caption}
+                    onChange={(e) => setMediaDialog({ ...mediaDialog, caption: e.target.value })}
+                    className="w-full text-sm border border-neutral-200 rounded p-2.5 focus:border-black focus:outline-none font-sans"
+                  />
+                </div>
+              )}
+
+              <p className="text-xs text-neutral-500 bg-neutral-50 p-2.5 rounded">
+                {mediaDialog.type === 'youtube'
+                  ? 'Відео буде автоматично вбудовано у повний розмір із інтерактивним плеєром.'
+                  : 'Фото буде відображено у високій якості на всю ширину тексту.'}
+              </p>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setMediaDialog(null)}
+                  className="px-4 py-2 text-xs text-neutral-600 hover:text-black cursor-pointer"
+                >
+                  Скасувати
+                </button>
+                <button
+                  type="button"
+                  disabled={!mediaDialog.url.trim()}
+                  onClick={handleInsertMedia}
+                  className="px-4 py-2 bg-black text-white text-xs rounded hover:bg-neutral-800 disabled:opacity-50 cursor-pointer"
+                >
+                  Вставити у текст
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Основний вміст */}
       <main className="flex-1 max-w-5xl w-full mx-auto px-6 sm:px-12 py-8 sm:py-12">
         {editingArticle ? (
@@ -240,8 +375,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Метадані статті (Рубрика, Автор, Час читання) */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2">
+              {/* Метадані статті (Рубрика та Автор — без часу читання) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-2">
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
                     Рубрика / Тема
@@ -267,25 +402,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                    Час читання
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="напр. 4 хв читання"
-                    value={editingArticle.readTime || ''}
-                    onChange={(e) => setEditingArticle({ ...editingArticle, readTime: e.target.value })}
-                    className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                  />
-                </div>
               </div>
 
-              {/* Зображення обкладинки */}
+              {/* Головне зображення обкладинки */}
               <div className="pt-2">
                 <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  URL обкладинки (необов'язково)
+                  URL головної обкладинки (необов'язково)
                 </label>
                 <input
                   type="url"
@@ -322,19 +444,101 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
 
-              {/* Повний текст статті */}
+              {/* Повний текст статті + Вставка фото/відео та режим попереднього перегляду */}
               <div className="pt-2">
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  Текст статті *
-                </label>
-                <textarea
-                  rows={10}
-                  required
-                  placeholder="Напишіть текст статті тут. Розділяйте абзаци порожнім рядком..."
-                  value={editingArticle.content || ''}
-                  onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
-                  className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
-                />
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
+                  <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                    Текст статті *
+                  </label>
+
+                  {/* Панель інструментів для медіа */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
+                      title="Вставити посилання на фото у статтю"
+                    >
+                      <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
+                      <span>+ Вставити фото</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
+                      title="Вставити посилання на відео з YouTube"
+                    >
+                      <VideoIcon className="w-3.5 h-3.5 text-red-600" />
+                      <span>+ YouTube</span>
+                    </button>
+
+                    {/* Перемикач: Редактор / Прев'ю */}
+                    <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab('edit')}
+                        className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                          editorTab === 'edit'
+                            ? 'bg-black text-white font-medium'
+                            : 'bg-white text-neutral-600 hover:text-black'
+                        }`}
+                      >
+                        Текст
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab('preview')}
+                        className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
+                          editorTab === 'preview'
+                            ? 'bg-black text-white font-medium'
+                            : 'bg-white text-neutral-600 hover:text-black'
+                        }`}
+                      >
+                        Прев'ю медіа
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {editorTab === 'edit' ? (
+                  <div>
+                    <textarea
+                      rows={12}
+                      required
+                      placeholder={`Напишіть текст статті тут. Розділяйте абзаци порожнім рядком.
+
+Щоб додати фото або відео з YouTube, просто вставте посилання окремим рядком:
+https://images.unsplash.com/...
+https://www.youtube.com/watch?v=...`}
+                      value={editingArticle.content || ''}
+                      onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
+                      className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
+                    />
+                    <div className="flex items-center justify-between text-[11px] text-neutral-400 mt-1.5">
+                      <span>💡 Посилання на фото чи YouTube окремим рядком автоматично транслюються у повний плеєр та якісні зображення.</span>
+                      <button
+                        type="button"
+                        onClick={() => setEditorTab('preview')}
+                        className="text-black hover:underline cursor-pointer font-sans"
+                      >
+                        Переглянути вигляд
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[300px]">
+                    <div className="text-xs uppercase tracking-wider text-neutral-400 mb-6 font-sans border-b border-neutral-200 pb-2 flex items-center justify-between">
+                      <span>Попередній перегляд статті:</span>
+                      <span className="text-[11px] text-neutral-400">Як це бачитимуть читачі</span>
+                    </div>
+                    {editingArticle.content ? (
+                      <ContentRenderer content={editingArticle.content} />
+                    ) : (
+                      <p className="text-neutral-400 italic font-serif text-sm">Текст статті порожній</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Перемикач видимості статті: Опубліковано або Приховано */}
@@ -544,6 +748,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   const isPub =
                     art.published === true || String(art.published) === 'true' || (art.published as any) === 1;
                   const isToggling = togglingId === art.id;
+                  const timeDisplay = formatTimeAgoOrDate(art.createdAt, art.date, art.id);
 
                   return (
                     <div
@@ -591,8 +796,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <span className="text-[11px] uppercase tracking-wider text-neutral-500">
                               {art.category}
                             </span>
-                            <span className="text-neutral-300">•</span>
-                            <span className="text-xs text-neutral-400">{art.date}</span>
+                            {timeDisplay && (
+                              <>
+                                <span className="text-neutral-300">•</span>
+                                <span className="text-xs text-neutral-400">{timeDisplay}</span>
+                              </>
+                            )}
                           </div>
 
                           <h2
@@ -608,7 +817,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             </p>
                           )}
                           <p className="text-[11px] text-neutral-400 mt-1">
-                            {art.author} — {art.readTime}
+                            {art.author}
                           </p>
                         </div>
                       </div>

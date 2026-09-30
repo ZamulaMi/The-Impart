@@ -7,6 +7,7 @@ export interface Article {
   author: string;
   coverImage?: string;
   date: string;
-  readTime: string;
+  readTime?: string;
+  createdAt?: string;
   published: boolean;
 }
