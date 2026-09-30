@@ -1,0 +1,262 @@
+import React, { useState } from 'react';
+import { Globe, Save, Check, RefreshCw } from 'lucide-react';
+import { SiteSocialLinks, SocialLinksSet } from '../types';
+
+interface SocialLinksManagerProps {
+  socialLinks: SiteSocialLinks;
+  onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
+  showNotification: (msg: string) => void;
+}
+
+export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
+  socialLinks,
+  onSaveSocialLinks,
+  showNotification,
+}) => {
+  const [activeLangTab, setActiveLangTab] = useState<'ua' | 'en'>('ua');
+  const [formData, setFormData] = useState<SiteSocialLinks>(socialLinks);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  // Оновлення посилання для конкретної мови та платформи
+  const handleLinkChange = (lang: 'ua' | 'en', platform: keyof SocialLinksSet, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [lang]: {
+        ...prev[lang],
+        [platform]: value,
+      },
+    }));
+    setHasChanges(true);
+  };
+
+  const handleCopyFromOtherLang = (sourceLang: 'ua' | 'en', targetLang: 'ua' | 'en') => {
+    setFormData((prev) => ({
+      ...prev,
+      [targetLang]: {
+        ...prev[sourceLang],
+      },
+    }));
+    setHasChanges(true);
+    showNotification(
+      targetLang === 'en'
+        ? 'Посилання скопійовано з української версії'
+        : 'Посилання скопійовано з англійської версії'
+    );
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    try {
+      await onSaveSocialLinks(formData);
+      setHasChanges(false);
+      showNotification('Посилання на соц. мережі успішно збережено у базі даних!');
+    } catch (err: any) {
+      alert(err.message || 'Помилка збереження посилань');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const currentLinks = formData[activeLangTab] || {};
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      {/* Заголовок */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-neutral-100 gap-4 mb-6">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-serif font-medium text-black">
+            Керування соціальними мережами
+          </h1>
+          <p className="text-xs text-neutral-500 mt-1">
+            Налаштуйте посилання на соц. мережі у футері окремо для української та англійської версій сайту.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={isSaving}
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-black text-white text-xs uppercase tracking-wider font-medium rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+        >
+          {isSaving ? (
+            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Save className="w-3.5 h-3.5" />
+          )}
+          <span>{isSaving ? 'Збереження...' : 'Зберегти зміни'}</span>
+        </button>
+      </div>
+
+      {/* Вкладки вибору мови: UA та EN */}
+      <div className="flex items-center justify-between border-b border-neutral-200 pb-px mb-8">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setActiveLangTab('ua')}
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all cursor-pointer ${
+              activeLangTab === 'ua'
+                ? 'border-black text-black'
+                : 'border-transparent text-neutral-400 hover:text-neutral-700'
+            }`}
+          >
+            <span>🇺🇦</span>
+            <span>Українська версія (UA)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveLangTab('en')}
+            className={`flex items-center gap-2 px-5 py-2.5 text-xs sm:text-sm font-medium border-b-2 transition-all cursor-pointer ${
+              activeLangTab === 'en'
+                ? 'border-black text-black'
+                : 'border-transparent text-neutral-400 hover:text-neutral-700'
+            }`}
+          >
+            <span>🇬🇧</span>
+            <span>English version (EN)</span>
+          </button>
+        </div>
+
+        {/* Кнопка швидкого копіювання */}
+        {activeLangTab === 'en' ? (
+          <button
+            type="button"
+            onClick={() => handleCopyFromOtherLang('ua', 'en')}
+            className="text-xs text-neutral-500 hover:text-black underline underline-offset-4 cursor-pointer"
+          >
+            Скопіювати з UA
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => handleCopyFromOtherLang('en', 'ua')}
+            className="text-xs text-neutral-500 hover:text-black underline underline-offset-4 cursor-pointer"
+          >
+            Скопіювати з EN
+          </button>
+        )}
+      </div>
+
+      {/* Форма налаштування посилань */}
+      <form onSubmit={handleSave} className="space-y-6 bg-neutral-50/70 p-6 sm:p-8 rounded-lg border border-neutral-100">
+        {/* Telegram */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4 fill-current text-sky-500" viewBox="0 0 24 24">
+                <path d="M21.927 3.513a1.498 1.498 0 0 0-1.505-.288L2.348 10.38c-1.048.423-1.042 1.34-.191 1.602l4.639 1.448 10.741-6.777c.507-.308.972-.143.59.196l-8.704 7.854-.319 4.768c.467 0 .673-.214.935-.467l2.247-2.185 4.675 3.453c.861.475 1.482.23 1.696-.8l3.068-14.457c.314-1.26-.481-1.831-1.308-1.442z" />
+              </svg>
+              <span>Telegram ({activeLangTab.toUpperCase()})</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal lowercase">https://t.me/...</span>
+          </label>
+          <input
+            type="url"
+            value={currentLinks.telegram || ''}
+            onChange={(e) => handleLinkChange(activeLangTab, 'telegram', e.target.value)}
+            placeholder="https://t.me/your_channel"
+            className="w-full px-3.5 py-2.5 bg-white text-sm border border-neutral-200 rounded focus:outline-none focus:border-black font-mono text-xs"
+          />
+        </div>
+
+        {/* Instagram */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4 fill-current text-pink-600" viewBox="0 0 24 24">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+              </svg>
+              <span>Instagram ({activeLangTab.toUpperCase()})</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal lowercase">https://instagram.com/...</span>
+          </label>
+          <input
+            type="url"
+            value={currentLinks.instagram || ''}
+            onChange={(e) => handleLinkChange(activeLangTab, 'instagram', e.target.value)}
+            placeholder="https://instagram.com/your_profile"
+            className="w-full px-3.5 py-2.5 bg-white text-sm border border-neutral-200 rounded focus:outline-none focus:border-black font-mono text-xs"
+          />
+        </div>
+
+        {/* X (formerly Twitter) */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4 fill-current text-black" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+              </svg>
+              <span>X / Twitter ({activeLangTab.toUpperCase()})</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal lowercase">https://x.com/...</span>
+          </label>
+          <input
+            type="url"
+            value={currentLinks.x || ''}
+            onChange={(e) => handleLinkChange(activeLangTab, 'x', e.target.value)}
+            placeholder="https://x.com/your_account"
+            className="w-full px-3.5 py-2.5 bg-white text-sm border border-neutral-200 rounded focus:outline-none focus:border-black font-mono text-xs"
+          />
+        </div>
+
+        {/* YouTube */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4 fill-current text-red-600" viewBox="0 0 24 24">
+                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+              </svg>
+              <span>YouTube ({activeLangTab.toUpperCase()})</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal lowercase">https://youtube.com/@...</span>
+          </label>
+          <input
+            type="url"
+            value={currentLinks.youtube || ''}
+            onChange={(e) => handleLinkChange(activeLangTab, 'youtube', e.target.value)}
+            placeholder="https://youtube.com/@your_channel"
+            className="w-full px-3.5 py-2.5 bg-white text-sm border border-neutral-200 rounded focus:outline-none focus:border-black font-mono text-xs"
+          />
+        </div>
+
+        {/* Threads */}
+        <div>
+          <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <svg className="w-4 h-4 fill-none stroke-current stroke-[2] stroke-linecap-round stroke-linejoin-round text-black" viewBox="0 0 24 24">
+                <path d="M19.25 12c0 4.5-3.25 8.25-8 8.25-4.5 0-7.75-3.5-7.75-8.25S6.75 3.75 12 3.75c4.75 0 7.5 3 7.75 7.25M16 11.25c0 3-1.75 4.5-4 4.5s-3.75-1.5-3.75-3.75S9.75 8.25 12 8.25c2.75 0 4 2 4 4.5v1.25c0 1.5-.75 2.5-2 2.5s-2-.75-2-2.25" />
+              </svg>
+              <span>Threads ({activeLangTab.toUpperCase()})</span>
+            </span>
+            <span className="text-[10px] text-neutral-400 font-normal lowercase">https://threads.net/@...</span>
+          </label>
+          <input
+            type="url"
+            value={currentLinks.threads || ''}
+            onChange={(e) => handleLinkChange(activeLangTab, 'threads', e.target.value)}
+            placeholder="https://threads.net/@your_account"
+            className="w-full px-3.5 py-2.5 bg-white text-sm border border-neutral-200 rounded focus:outline-none focus:border-black font-mono text-xs"
+          />
+        </div>
+
+        {/* Нижня панель дій */}
+        <div className="pt-4 border-t border-neutral-200 flex items-center justify-between">
+          <p className="text-xs text-neutral-500">
+            {hasChanges
+              ? 'Є незбережені зміни. Натисніть «Зберегти зміни», щоб застосувати їх.'
+              : 'Усі зміни синхронізовано з базою даних.'}
+          </p>
+          <button
+            type="submit"
+            disabled={isSaving}
+            className="px-6 py-2 bg-black text-white text-xs uppercase tracking-wider font-medium rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
+          >
+            {isSaving ? 'Збереження...' : 'Зберегти'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};

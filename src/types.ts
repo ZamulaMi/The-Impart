@@ -21,3 +21,16 @@ export interface Article {
 }
 
 export type SiteLanguage = 'ua' | 'en';
+
+export interface SocialLinksSet {
+  telegram?: string;
+  instagram?: string;
+  x?: string;
+  youtube?: string;
+  threads?: string;
+}
+
+export interface SiteSocialLinks {
+  ua: SocialLinksSet;
+  en: SocialLinksSet;
+}

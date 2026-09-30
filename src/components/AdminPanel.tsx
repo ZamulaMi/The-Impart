@@ -14,10 +14,13 @@ import {
   X,
   Languages,
   Copy,
+  FileText,
+  Share2,
 } from 'lucide-react';
-import { Article } from '../types';
+import { Article, SiteSocialLinks } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
 import { ContentRenderer } from './ContentRenderer';
+import { SocialLinksManager } from './SocialLinksManager';
 
 interface AdminPanelProps {
   articles: Article[];
@@ -25,6 +28,8 @@ interface AdminPanelProps {
   onDeleteArticle: (id: string) => Promise<void> | void;
   onExitAdmin: () => void;
   onViewArticleOnSite: (id: string) => void;
+  socialLinks: SiteSocialLinks;
+  onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -33,7 +38,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onDeleteArticle,
   onExitAdmin,
   onViewArticleOnSite,
+  socialLinks,
+  onSaveSocialLinks,
 }) => {
+  // Розділ адмін-панелі: за замовчуванням "Редактор статей" ('articles') або "Соц. мережі" ('social_links')
+  const [activeSection, setActiveSection] = useState<'articles' | 'social_links'>('articles');
+
   const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
@@ -396,9 +406,61 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
-      {/* Основний вміст */}
-      <main className="flex-1 max-w-5xl w-full mx-auto px-6 sm:px-12 py-8 sm:py-12">
-        {editingArticle ? (
+      {/* Основний контейнер з лівим сайдбаром меню та робочою областю */}
+      <div className="flex-1 flex flex-col md:flex-row w-full max-w-7xl mx-auto">
+        {/* Лівий сайдбар з кнопками опцій */}
+        <aside className="w-full md:w-64 border-b md:border-b-0 md:border-r border-neutral-100 p-6 shrink-0 bg-neutral-50/40">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-neutral-400 mb-3 px-3">
+            Розділи
+          </div>
+          <nav className="flex flex-row md:flex-col gap-1.5">
+            {/* Опція 1: Редактор статей (по замовчуванню) */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('articles');
+                setEditingArticle(null);
+                setIsCreatingNew(false);
+              }}
+              className={`flex-1 md:flex-initial flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-md transition-all cursor-pointer text-left ${
+                activeSection === 'articles'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+              }`}
+            >
+              <FileText className="w-4 h-4 shrink-0" />
+              <span>Редактор статей</span>
+            </button>
+
+            {/* Опція 2: Соц. мережі */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('social_links');
+                setEditingArticle(null);
+                setIsCreatingNew(false);
+              }}
+              className={`flex-1 md:flex-initial flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-md transition-all cursor-pointer text-left ${
+                activeSection === 'social_links'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+              }`}
+            >
+              <Share2 className="w-4 h-4 shrink-0" />
+              <span>Соц. мережі</span>
+            </button>
+          </nav>
+        </aside>
+
+        {/* Робоча область вибраного розділу */}
+        <main className="flex-1 w-full px-6 sm:px-12 py-8 sm:py-12 overflow-x-hidden">
+          {activeSection === 'social_links' ? (
+            <SocialLinksManager
+              socialLinks={socialLinks}
+              onSaveSocialLinks={onSaveSocialLinks}
+              showNotification={showNotification}
+            />
+          ) : editingArticle ? (
           /* Форма редагування / створення статті */
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between pb-6 border-b border-neutral-100 mb-6">
@@ -1228,6 +1290,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
         )}
       </main>
+      </div>
     </div>
   );
 };

@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
-import { Article, SiteLanguage } from './types';
+import { Article, SiteLanguage, SiteSocialLinks } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
@@ -13,6 +13,24 @@ import { formatTimeAgoOrDate } from './utils/date';
 
 const STORAGE_KEY = 'the_impart_articles_v1';
 const LANG_STORAGE_KEY = 'the_impart_lang_v1';
+const SOCIAL_STORAGE_KEY = 'the_impart_social_links_v1';
+
+const DEFAULT_SOCIAL_LINKS: SiteSocialLinks = {
+  ua: {
+    telegram: 'https://t.me',
+    instagram: 'https://instagram.com',
+    x: 'https://x.com',
+    youtube: 'https://youtube.com',
+    threads: 'https://threads.net',
+  },
+  en: {
+    telegram: 'https://t.me',
+    instagram: 'https://instagram.com',
+    x: 'https://x.com',
+    youtube: 'https://youtube.com',
+    threads: 'https://threads.net',
+  },
+};
 
 export default function App() {
   const [currentRoute, setCurrentRoute] = useState<'main' | 'admin'>(() => {
@@ -33,6 +51,18 @@ export default function App() {
     return 'ua';
   });
 
+  const [socialLinks, setSocialLinks] = useState<SiteSocialLinks>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(SOCIAL_STORAGE_KEY);
+        if (saved) return JSON.parse(saved);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    return DEFAULT_SOCIAL_LINKS;
+  });
+
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -48,6 +78,46 @@ export default function App() {
     setSiteLang(lang);
     try {
       localStorage.setItem(LANG_STORAGE_KEY, lang);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchSocialLinksFromDb = async () => {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && typeof data === 'object') {
+          setSocialLinks(data);
+          try {
+            localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(data));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Settings endpoint unavailable, keeping existing:', err);
+    }
+  };
+
+  const handleSaveSocialLinks = async (links: SiteSocialLinks) => {
+    const res = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(links),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const saved = await res.json();
+    setSocialLinks(saved);
+    try {
+      localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(saved));
     } catch (e) {
       console.error(e);
     }
@@ -82,9 +152,10 @@ export default function App() {
     }
   };
 
-  // Завантаження статей виключно із бази даних
+  // Завантаження статей та налаштувань із бази даних
   useEffect(() => {
     fetchArticlesFromDb();
+    fetchSocialLinksFromDb();
   }, []);
 
   // Синхронізація з навігацією браузера
@@ -99,6 +170,7 @@ export default function App() {
       } else {
         setCurrentRoute('main');
         fetchArticlesFromDb();
+        fetchSocialLinksFromDb();
       }
     };
 
@@ -206,6 +278,8 @@ export default function App() {
         onDeleteArticle={handleDeleteArticle}
         onExitAdmin={() => navigateTo('main')}
         onViewArticleOnSite={(id) => navigateTo('main', id)}
+        socialLinks={socialLinks}
+        onSaveSocialLinks={handleSaveSocialLinks}
       />
     );
   }
@@ -503,56 +577,79 @@ export default function App() {
 
             <div className="mt-3.5 flex items-center gap-4 text-neutral-600">
               {/* Telegram */}
-              <a
-                href="https://t.me"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Telegram"
-                className="text-neutral-600 hover:text-black transition-colors"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M21.927 3.513a1.498 1.498 0 0 0-1.505-.288L2.348 10.38c-1.048.423-1.042 1.34-.191 1.602l4.639 1.448 10.741-6.777c.507-.308.972-.143.59.196l-8.704 7.854-.319 4.768c.467 0 .673-.214.935-.467l2.247-2.185 4.675 3.453c.861.475 1.482.23 1.696-.8l3.068-14.457c.314-1.26-.481-1.831-1.308-1.442z" />
-                </svg>
-              </a>
+              {socialLinks[siteLang]?.telegram && (
+                <a
+                  href={socialLinks[siteLang].telegram}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Telegram"
+                  className="text-neutral-600 hover:text-black transition-colors"
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M21.927 3.513a1.498 1.498 0 0 0-1.505-.288L2.348 10.38c-1.048.423-1.042 1.34-.191 1.602l4.639 1.448 10.741-6.777c.507-.308.972-.143.59.196l-8.704 7.854-.319 4.768c.467 0 .673-.214.935-.467l2.247-2.185 4.675 3.453c.861.475 1.482.23 1.696-.8l3.068-14.457c.314-1.26-.481-1.831-1.308-1.442z" />
+                  </svg>
+                </a>
+              )}
 
               {/* Instagram */}
-              <a
-                href="https://instagram.com"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Instagram"
-                className="text-neutral-600 hover:text-black transition-colors"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
-                </svg>
-              </a>
+              {socialLinks[siteLang]?.instagram && (
+                <a
+                  href={socialLinks[siteLang].instagram}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Instagram"
+                  className="text-neutral-600 hover:text-black transition-colors"
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
+                  </svg>
+                </a>
+              )}
 
               {/* X (formerly Twitter) */}
-              <a
-                href="https://x.com"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="X (Twitter)"
-                className="text-neutral-600 hover:text-black transition-colors"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-              </a>
+              {socialLinks[siteLang]?.x && (
+                <a
+                  href={socialLinks[siteLang].x}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="X (Twitter)"
+                  className="text-neutral-600 hover:text-black transition-colors"
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                  </svg>
+                </a>
+              )}
 
               {/* YouTube */}
-              <a
-                href="https://youtube.com"
-                target="_blank"
-                rel="noreferrer"
-                aria-label="YouTube"
-                className="text-neutral-600 hover:text-black transition-colors"
-              >
-                <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
-                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                </svg>
-              </a>
+              {socialLinks[siteLang]?.youtube && (
+                <a
+                  href={socialLinks[siteLang].youtube}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="YouTube"
+                  className="text-neutral-600 hover:text-black transition-colors"
+                >
+                  <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                  </svg>
+                </a>
+              )}
+
+              {/* Threads (остання у списку з чистим мінімалістичним силуетом) */}
+              {socialLinks[siteLang]?.threads && (
+                <a
+                  href={socialLinks[siteLang].threads}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Threads"
+                  className="text-neutral-600 hover:text-black transition-colors"
+                >
+                  <svg className="w-5 h-5 fill-none stroke-current stroke-[1.8] stroke-linecap-round stroke-linejoin-round" viewBox="0 0 24 24">
+                    <path d="M19.25 12c0 4.5-3.25 8.25-8 8.25-4.5 0-7.75-3.5-7.75-8.25S6.75 3.75 12 3.75c4.75 0 7.5 3 7.75 7.25M16 11.25c0 3-1.75 4.5-4 4.5s-3.75-1.5-3.75-3.75S9.75 8.25 12 8.25c2.75 0 4 2 4 4.5v1.25c0 1.5-.75 2.5-2 2.5s-2-.75-2-2.25" />
+                  </svg>
+                </a>
+              )}
             </div>
           </div>
 

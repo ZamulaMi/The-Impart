@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import articlesHandler from './api/articles';
+import settingsHandler from './api/settings';
 
 dotenv.config();
 
@@ -18,6 +19,18 @@ app.all(['/api/articles', '/api/articles/'], async (req, res) => {
     await articlesHandler(req, res);
   } catch (err: any) {
     console.error('Express /api/articles route error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err?.message || 'Internal Server Error' });
+    }
+  }
+});
+
+// Підключення API ендпоінту налаштувань сайту (включаючи соц. мережі)
+app.all(['/api/settings', '/api/settings/'], async (req, res) => {
+  try {
+    await settingsHandler(req, res);
+  } catch (err: any) {
+    console.error('Express /api/settings route error:', err);
     if (!res.headersSent) {
       res.status(500).json({ error: err?.message || 'Internal Server Error' });
     }
