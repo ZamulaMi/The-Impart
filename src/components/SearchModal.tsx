@@ -21,21 +21,34 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   onShowAllSearchResults,
 }) => {
   const [query, setQuery] = useState('');
+  const [rendered, setRendered] = useState(isOpen);
+  const [isAnimateIn, setIsAnimateIn] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Плавне монтування та розмонтування анімацією
   useEffect(() => {
     if (isOpen) {
+      setRendered(true);
       setQuery('');
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 50);
       document.body.style.overflow = 'hidden';
+      const timer = requestAnimationFrame(() => {
+        setIsAnimateIn(true);
+      });
+      const focusTimer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
+      return () => {
+        cancelAnimationFrame(timer);
+        clearTimeout(focusTimer);
+      };
     } else {
+      setIsAnimateIn(false);
       document.body.style.overflow = '';
+      const timer = setTimeout(() => {
+        setRendered(false);
+      }, 350);
+      return () => clearTimeout(timer);
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -48,14 +61,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!rendered) return null;
 
   const isEn = lang === 'en';
   const cleanQuery = query.trim().toLowerCase();
 
   // Фільтруємо статті за активною мовою та релевантністю
   const matchingArticles = articles.filter((article) => {
-    // Перевірка видимості
     if (isEn) {
       const isPubEn = article.publishedEn === true || String(article.publishedEn) === 'true';
       if (!isPubEn || !article.titleEn?.trim()) return false;
@@ -66,7 +78,6 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
     if (!cleanQuery) return false;
 
-    // Поля для поточної мови
     const title = (isEn ? article.titleEn : article.title) || '';
     const excerpt = (isEn ? article.excerptEn : article.excerpt) || '';
     const content = (isEn ? article.contentEn : article.content) || '';
@@ -96,56 +107,80 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex flex-col items-center justify-start bg-white/80 backdrop-blur-md transition-all duration-300 px-4 sm:px-8 pt-16 sm:pt-24 pb-8 overflow-y-auto"
+      className={`fixed inset-0 z-50 flex flex-col justify-between bg-white/95 backdrop-blur-md transition-opacity duration-350 ease-out ${
+        isAnimateIn ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
     >
-      {/* Кнопка закриття у верхньому правому кутку */}
-      <button
-        onClick={onClose}
-        aria-label="Закрити пошук"
-        className="fixed top-6 right-6 sm:right-12 p-2.5 text-neutral-400 hover:text-black hover:rotate-90 transition-all duration-300 cursor-pointer rounded-full hover:bg-neutral-100"
-      >
-        <X className="w-6 h-6 stroke-[1.5]" />
-      </button>
+      {/* 
+        Верхня панель модального вікна:
+        Використовує тег header з абсолютно ідентичними класами,
+        структурою flexbox і стилями як і основна шапка сайту.
+      */}
+      <header className="w-full bg-transparent px-6 sm:px-12 md:px-16 py-6 sm:py-8 flex items-center justify-between">
+        <span
+          className="text-2xl sm:text-3xl font-medium tracking-tight text-black/30 select-none cursor-default"
+          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+        >
+          The Impart
+        </span>
 
-      {/* Центральний контейнер пошуку */}
-      <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
-        {/* Поле вводу по центру */}
-        <div className="w-full relative flex items-center border-b-2 border-neutral-900 pb-3 transition-colors">
-          <Search className="w-6 h-6 text-neutral-400 mr-3.5 shrink-0 stroke-[1.75]" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && matchingArticles.length > 0) {
-                handleOpenAll();
-              }
-            }}
-            placeholder={isEn ? 'Search articles, thoughts, topics...' : 'Пошук за назвою, описом або текстом...'}
-            className="w-full text-xl sm:text-2xl md:text-3xl font-serif text-black placeholder:text-neutral-300 placeholder:font-serif focus:outline-none bg-transparent leading-relaxed"
-          />
-          {query && (
-            <button
-              onClick={() => {
-                setQuery('');
-                inputRef.current?.focus();
+        {/* Кнопка-хрестик: ідентична розмірність (p-2, w-5 h-5, stroke-[1.75]) */}
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Закрити пошук"
+          className="p-2 text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
+        >
+          <X className="w-5 h-5 stroke-[1.75]" />
+        </button>
+      </header>
+
+      {/* Центральна зона пошуку */}
+      <div className="flex-1 w-full max-w-2xl mx-auto px-6 sm:px-8 flex flex-col justify-start pt-4 sm:pt-12 pb-8 overflow-y-auto">
+        {/* Поле вводу по центру з плавною анімацією */}
+        <div
+          className={`w-full transition-all duration-350 ease-out ${
+            isAnimateIn ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
+          }`}
+        >
+          <div className="w-full relative flex items-center border-b-2 border-neutral-900 pb-3 transition-colors">
+            <Search className="w-6 h-6 text-neutral-400 mr-3.5 shrink-0 stroke-[1.75]" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && matchingArticles.length > 0) {
+                  handleOpenAll();
+                }
               }}
-              className="text-xs uppercase tracking-wider text-neutral-400 hover:text-black px-2 py-1 cursor-pointer transition-colors"
-            >
-              {isEn ? 'Clear' : 'Очистити'}
-            </button>
+              placeholder={isEn ? 'Search articles, thoughts, topics...' : 'Пошук за назвою, описом або текстом...'}
+              className="w-full text-xl sm:text-2xl md:text-3xl font-serif text-black placeholder:text-neutral-300 placeholder:font-serif focus:outline-none bg-transparent leading-relaxed"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => {
+                  setQuery('');
+                  inputRef.current?.focus();
+                }}
+                className="text-xs uppercase tracking-wider text-neutral-400 hover:text-black px-2 py-1 cursor-pointer transition-colors"
+              >
+                {isEn ? 'Clear' : 'Очистити'}
+              </button>
+            )}
+          </div>
+
+          {/* Підказка під полем вводу */}
+          {!cleanQuery && (
+            <p className="text-xs sm:text-sm text-neutral-400 mt-4 font-sans tracking-wide text-center">
+              {isEn
+                ? 'Start typing keywords to search by title, excerpt, and content.'
+                : 'Введіть ключові слова для миттєвого пошуку за заголовком, описом або текстом статей.'}
+            </p>
           )}
         </div>
-
-        {/* Підказка під полем вводу */}
-        {!cleanQuery && (
-          <p className="text-xs sm:text-sm text-neutral-400 mt-4 font-sans tracking-wide text-center">
-            {isEn
-              ? 'Start typing keywords to search by title, excerpt, and content.'
-              : 'Введіть ключові слова для миттєвого пошуку за заголовком, описом або текстом статей.'}
-          </p>
-        )}
 
         {/* Результати пошуку */}
         {cleanQuery && (
@@ -160,6 +195,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
               {matchingArticles.length > 0 && (
                 <button
+                  type="button"
                   onClick={handleOpenAll}
                   className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-medium text-black hover:text-neutral-600 transition-colors cursor-pointer group"
                 >
@@ -171,7 +207,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
             {/* Список знайдених статей */}
             {matchingArticles.length > 0 ? (
-              <div className="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
                 {matchingArticles.map((article) => {
                   const title = isEn && article.titleEn ? article.titleEn : article.title;
                   const excerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
@@ -229,6 +265,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
           </div>
         )}
       </div>
+
+      {/* Нижня зона для збереження балансу */}
+      <div className="h-6 sm:h-12 w-full" />
     </div>
   );
 };

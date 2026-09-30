@@ -250,16 +250,21 @@ export default function App() {
 
       {/* Шапка (Header) - мінімалістична та чиста, дизайн кнопки пошуку збережено */}
       <header className="w-full bg-white px-6 sm:px-12 md:px-16 py-6 sm:py-8 flex items-center justify-between">
-        <button
-          onClick={() => {
-            setSelectedArticleId(null);
-            setActiveSearchFilter(null);
-          }}
-          className="text-2xl sm:text-3xl font-medium tracking-tight text-black select-none text-left cursor-pointer focus:outline-none"
-          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-        >
-          The Impart
-        </button>
+        {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва */}
+        <div className="overflow-hidden py-1 -my-1">
+          <button
+            type="button"
+            onClick={() => {
+              navigateTo('main');
+              setActiveSearchFilter(null);
+            }}
+            aria-label="The Impart — Головна сторінка"
+            className="animate-title-slide-down block text-2xl sm:text-3xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-left cursor-pointer focus:outline-none"
+            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+          >
+            The Impart
+          </button>
+        </div>
 
         <button
           type="button"
