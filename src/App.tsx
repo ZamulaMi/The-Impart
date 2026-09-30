@@ -4,10 +4,11 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Search } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { Article, SiteLanguage } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
+import { SearchModal } from './components/SearchModal';
 import { formatTimeAgoOrDate } from './utils/date';
 
 const STORAGE_KEY = 'the_impart_articles_v1';
@@ -35,6 +36,13 @@ export default function App() {
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Стан пошуку
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [activeSearchFilter, setActiveSearchFilter] = useState<{
+    query: string;
+    articleIds: string[];
+  } | null>(null);
 
   const handleSetLang = (lang: SiteLanguage) => {
     setSiteLang(lang);
@@ -203,7 +211,7 @@ export default function App() {
   }
 
   // Фільтрація статей відповідно до обраної мови
-  const publishedArticles = articles.filter((a) => {
+  const basePublishedArticles = articles.filter((a) => {
     if (siteLang === 'en') {
       const isPubEn = a.publishedEn === true || String(a.publishedEn) === 'true';
       return isPubEn && Boolean(a.titleEn?.trim());
@@ -211,14 +219,42 @@ export default function App() {
     return a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
   });
 
+  // Враховуємо активний фільтр пошуку (якщо користувач обрав "відкрити всі знайдені статті")
+  const publishedArticles = activeSearchFilter
+    ? basePublishedArticles.filter((a) => activeSearchFilter.articleIds.includes(a.id))
+    : basePublishedArticles;
+
   const selectedArticle = articles.find((a) => a.id === selectedArticleId);
 
   return (
     <div className="min-h-screen w-full bg-white text-black flex flex-col justify-between">
-      {/* Шапка (Header) - повернено чистий початковий вигляд без перемикача */}
+      {/* Модальне вікно пошуку з напівпрозорим бекдропом і блюром */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        articles={articles}
+        lang={siteLang}
+        onSelectArticle={(id) => {
+          setSelectedArticleId(id);
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+        onShowAllSearchResults={(query, results) => {
+          setSelectedArticleId(null);
+          setActiveSearchFilter({
+            query,
+            articleIds: results.map((r) => r.id),
+          });
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        }}
+      />
+
+      {/* Шапка (Header) - мінімалістична та чиста, дизайн кнопки пошуку збережено */}
       <header className="w-full bg-white px-6 sm:px-12 md:px-16 py-6 sm:py-8 flex items-center justify-between">
         <button
-          onClick={() => setSelectedArticleId(null)}
+          onClick={() => {
+            setSelectedArticleId(null);
+            setActiveSearchFilter(null);
+          }}
           className="text-2xl sm:text-3xl font-medium tracking-tight text-black select-none text-left cursor-pointer focus:outline-none"
           style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
         >
@@ -227,6 +263,7 @@ export default function App() {
 
         <button
           type="button"
+          onClick={() => setIsSearchOpen(true)}
           aria-label="Пошук"
           className="p-2 text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none"
         >
@@ -246,6 +283,28 @@ export default function App() {
             />
           ) : (
             <div className="max-w-6xl mx-auto px-6 sm:px-12 md:px-16 py-8 sm:py-12">
+              {/* Індикатор активного фільтра пошуку на головній */}
+              {activeSearchFilter && (
+                <div className="mb-8 flex items-center justify-between bg-neutral-50 border border-neutral-200/80 px-4 py-3 rounded-lg animate-fade-in">
+                  <div className="flex items-center gap-2 text-xs sm:text-sm text-neutral-600">
+                    <Search className="w-4 h-4 text-neutral-400 shrink-0" />
+                    <span>
+                      {siteLang === 'en' ? 'Results for query:' : 'Результати за запитом:'}{' '}
+                      <strong className="text-black font-semibold">«{activeSearchFilter.query}»</strong>
+                    </span>
+                    <span className="text-neutral-400">({publishedArticles.length})</span>
+                  </div>
+
+                  <button
+                    onClick={() => setActiveSearchFilter(null)}
+                    className="text-xs uppercase tracking-wider text-neutral-500 hover:text-black flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <span>{siteLang === 'en' ? 'Reset search' : 'Скинути пошук'}</span>
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
               {isLoading ? (
                 <div className="py-24 text-center">
                   <div className="inline-block w-5 h-5 border-2 border-neutral-300 border-t-black rounded-full animate-spin" />
@@ -253,12 +312,23 @@ export default function App() {
               ) : publishedArticles.length === 0 ? (
                 <div className="py-24 text-center max-w-md mx-auto">
                   <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-2">
-                    {siteLang === 'en'
+                    {activeSearchFilter
+                      ? siteLang === 'en'
+                        ? 'No articles match your search criteria.'
+                        : 'За вашим запитом не знайдено опублікованих статей.'
+                      : siteLang === 'en'
                       ? 'No articles published in English yet.'
                       : 'У базі даних наразі немає опублікованих статей.'}
                   </p>
                   <p className="text-xs text-neutral-400 font-sans">
-                    {siteLang === 'en' ? (
+                    {activeSearchFilter ? (
+                      <button
+                        onClick={() => setActiveSearchFilter(null)}
+                        className="text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
+                      >
+                        {siteLang === 'en' ? 'Show all articles' : 'Показати всі матеріали'}
+                      </button>
+                    ) : siteLang === 'en' ? (
                       <button
                         onClick={() => handleSetLang('ua')}
                         className="text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
@@ -271,7 +341,7 @@ export default function App() {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-16">
+                <div className="space-y-4 sm:space-y-5">
                   {/* Головна стаття (перша у списку) */}
                   {publishedArticles[0] && (() => {
                     const hero = publishedArticles[0];
@@ -287,45 +357,57 @@ export default function App() {
                           setSelectedArticleId(hero.id);
                           window.scrollTo({ top: 0, behavior: 'smooth' });
                         }}
-                        className="group cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-8 items-center border-b border-neutral-100 pb-16"
+                        className="group relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-md hover:shadow-xl transition-all duration-500 min-h-[380px] sm:min-h-[460px] md:min-h-[520px] flex flex-col justify-end"
                       >
-                        {hero.coverImage && (
-                          <div className="lg:col-span-7 aspect-[16/10] overflow-hidden bg-neutral-100 rounded-lg">
-                            <img
-                              src={hero.coverImage}
-                              alt={title}
-                              className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-                            />
-                          </div>
+                        {/* Фонове фото */}
+                        {hero.coverImage ? (
+                          <img
+                            src={hero.coverImage}
+                            alt={title}
+                            className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 bg-neutral-900" />
                         )}
-                        <div className={hero.coverImage ? 'lg:col-span-5' : 'lg:col-span-12'}>
-                          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-neutral-400 mb-3">
-                            <span>{category}</span>
-                            <span>•</span>
-                            <span>{timeAgo}</span>
+
+                        {/* Темні градієнтні накладки для максимальної читабельності */}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/15 group-hover:from-black/90 group-hover:via-black/50 transition-all duration-300" />
+
+                        {/* Контент статті прямо на фото */}
+                        <div className="relative z-10 p-6 sm:p-10 md:p-12 text-white max-w-3xl">
+                          {/* Рубрика та динамічний час на фото */}
+                          <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-white/80 mb-3 drop-shadow-xs">
+                            <span className="font-medium text-white/95">{category}</span>
+                            <span className="text-white/40">•</span>
+                            <span className="text-white/80">{timeAgo}</span>
                           </div>
+
+                          {/* Назва статті на фото */}
                           <h2
-                            className="text-2xl sm:text-3xl lg:text-4xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-4"
+                            className="text-2xl sm:text-3xl lg:text-4xl font-serif font-medium text-white leading-snug drop-shadow-sm group-hover:text-white/95 transition-colors"
                             style={{ fontFamily: "'Playfair Display', serif" }}
                           >
                             {title}
                           </h2>
+
+                          {/* Короткий опис: плавно з'являється при наведенні курсору */}
                           {excerpt && (
-                            <p className="text-sm sm:text-base text-neutral-600 leading-relaxed font-sans mb-5 line-clamp-3">
-                              {excerpt}
-                            </p>
+                            <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-300 ease-out">
+                              <div className="overflow-hidden">
+                                <p className="text-sm sm:text-base text-neutral-200 leading-relaxed font-sans pt-4 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 line-clamp-3">
+                                  {excerpt}
+                                </p>
+                              </div>
+                            </div>
                           )}
-                          <div className="text-xs text-neutral-400">
-                            {hero.author}
-                          </div>
                         </div>
                       </article>
                     );
                   })()}
 
-                  {/* Сітка наступних статей */}
+                  {/* Сітка наступних статей: назва, рубрика і час на фото, опис при наведенні */}
                   {publishedArticles.length > 1 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4 lg:gap-5">
                       {publishedArticles.slice(1).map((article) => {
                         const isEn = siteLang === 'en';
                         const title = isEn && article.titleEn ? article.titleEn : article.title;
@@ -340,37 +422,51 @@ export default function App() {
                               setSelectedArticleId(article.id);
                               window.scrollTo({ top: 0, behavior: 'smooth' });
                             }}
-                            className="group cursor-pointer flex flex-col justify-between"
+                            className="group relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-md hover:shadow-lg transition-all duration-500 aspect-[4/5] sm:aspect-[3/4] flex flex-col justify-end"
                           >
-                            <div>
-                              {article.coverImage && (
-                                <div className="aspect-[16/10] mb-5 overflow-hidden bg-neutral-100 rounded-lg">
-                                  <img
-                                    src={article.coverImage}
-                                    alt={title}
-                                    className="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
-                                  />
-                                </div>
-                              )}
-                              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-neutral-400 mb-2">
-                                <span>{category}</span>
-                                <span>•</span>
-                                <span>{timeAgo}</span>
+                            {/* Фонове фото */}
+                            {article.coverImage ? (
+                              <img
+                                src={article.coverImage}
+                                alt={title}
+                                className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                              />
+                            ) : (
+                              <div className="absolute inset-0 bg-neutral-900 flex items-center justify-center text-white/30 font-serif text-sm">
+                                The Impart
                               </div>
+                            )}
+
+                            {/* Градієнтна накладка для тексту */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/40 to-black/15 group-hover:from-black/90 group-hover:via-black/50 transition-all duration-300" />
+
+                            {/* Контент поверх фото */}
+                            <div className="relative z-10 p-5 sm:p-6 text-white w-full">
+                              {/* Рубрика та динамічний час */}
+                              <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-white/80 mb-2 drop-shadow-xs">
+                                <span className="font-medium text-white/95">{category}</span>
+                                <span className="text-white/40">•</span>
+                                <span className="text-white/80">{timeAgo}</span>
+                              </div>
+
+                              {/* Назва статті на фото */}
                               <h3
-                                className="text-lg sm:text-xl font-serif font-medium text-black group-hover:text-neutral-600 transition-colors leading-snug mb-2"
+                                className="text-lg sm:text-xl font-serif font-medium text-white leading-snug drop-shadow-sm group-hover:text-white/95 transition-colors line-clamp-3"
                                 style={{ fontFamily: "'Playfair Display', serif" }}
                               >
                                 {title}
                               </h3>
+
+                              {/* Короткий опис: з'являється при наведенні курсору */}
                               {excerpt && (
-                                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed font-sans line-clamp-2 mb-3">
-                                  {excerpt}
-                                </p>
+                                <div className="grid grid-rows-[0fr] group-hover:grid-rows-[1fr] transition-all duration-300 ease-out">
+                                  <div className="overflow-hidden">
+                                    <p className="text-xs sm:text-sm text-neutral-200 leading-relaxed font-sans pt-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300 delay-75 line-clamp-3">
+                                      {excerpt}
+                                    </p>
+                                  </div>
+                                </div>
                               )}
-                            </div>
-                            <div className="text-[11px] text-neutral-400 pt-3 border-t border-neutral-100">
-                              {article.author}
                             </div>
                           </article>
                         );
