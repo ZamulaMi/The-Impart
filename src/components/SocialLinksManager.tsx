@@ -21,6 +21,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hasChanges) {
@@ -39,11 +40,15 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     if (!onRefreshSocialLinks) return;
     setIsRefreshing(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     try {
       await onRefreshSocialLinks();
       setHasChanges(false);
-      showNotification('Дані успішно оновлено із сервера!');
+      const timeStr = new Date().toLocaleTimeString('uk-UA');
+      setSuccessMessage(`✓ Свіжі посилання успішно завантажено з сервера (${timeStr})`);
+      showNotification('Дані оновлено з сервера!');
     } catch {
+      setErrorMessage('Не вдалося зв\'язатися з сервером');
       showNotification('Не вдалося оновити дані із сервера');
     } finally {
       setIsRefreshing(false);
@@ -55,23 +60,25 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     setFormData((prev) => ({
       ...prev,
       [lang]: {
-        ...prev[lang],
+        ...(prev?.[lang] || {}),
         [platform]: value,
       },
     }));
     setHasChanges(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
   };
 
   const handleCopyFromOtherLang = (sourceLang: 'ua' | 'en', targetLang: 'ua' | 'en') => {
     setFormData((prev) => ({
       ...prev,
       [targetLang]: {
-        ...prev[sourceLang],
+        ...(prev?.[sourceLang] || {}),
       },
     }));
     setHasChanges(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
     showNotification(
       targetLang === 'en'
         ? 'Посилання скопійовано з української версії'
@@ -80,7 +87,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   };
 
   const normalizeUrl = (raw: string): string => {
-    const trimmed = raw.trim();
+    const trimmed = (raw || '').trim();
     if (!trimmed) return '';
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       return trimmed;
@@ -97,22 +104,23 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     e.preventDefault();
     setIsSaving(true);
     setErrorMessage(null);
+    setSuccessMessage(null);
 
-    // Нормалізуємо посилання перед збереженням
+    // Безпечно нормалізуємо посилання перед збереженням
     const normalizedData: SiteSocialLinks = {
       ua: {
-        telegram: normalizeUrl(formData.ua.telegram || ''),
-        instagram: normalizeUrl(formData.ua.instagram || ''),
-        x: normalizeUrl(formData.ua.x || ''),
-        youtube: normalizeUrl(formData.ua.youtube || ''),
-        threads: normalizeUrl(formData.ua.threads || ''),
+        telegram: normalizeUrl(formData?.ua?.telegram || ''),
+        instagram: normalizeUrl(formData?.ua?.instagram || ''),
+        x: normalizeUrl(formData?.ua?.x || ''),
+        youtube: normalizeUrl(formData?.ua?.youtube || ''),
+        threads: normalizeUrl(formData?.ua?.threads || ''),
       },
       en: {
-        telegram: normalizeUrl(formData.en.telegram || ''),
-        instagram: normalizeUrl(formData.en.instagram || ''),
-        x: normalizeUrl(formData.en.x || ''),
-        youtube: normalizeUrl(formData.en.youtube || ''),
-        threads: normalizeUrl(formData.en.threads || ''),
+        telegram: normalizeUrl(formData?.en?.telegram || ''),
+        instagram: normalizeUrl(formData?.en?.instagram || ''),
+        x: normalizeUrl(formData?.en?.x || ''),
+        youtube: normalizeUrl(formData?.en?.youtube || ''),
+        threads: normalizeUrl(formData?.en?.threads || ''),
       },
     };
 
@@ -121,14 +129,15 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     try {
       await onSaveSocialLinks(normalizedData);
       setHasChanges(false);
+      const timeStr = new Date().toLocaleTimeString('uk-UA');
+      setSuccessMessage(`✓ Успішно збережено на сервері та в базі даних (${timeStr})`);
       showNotification('Посилання на соц. мережі успішно збережено на сервері!');
     } catch (err: any) {
       console.error('Save social links error:', err);
       setErrorMessage(
-        err?.message || 'Сервер тимчасово недоступний, але зміни надійно збережено локально на цьому пристрої.'
+        err?.message || 'Помилка збереження на сервері. Спробуйте ще раз.'
       );
-      setHasChanges(false);
-      showNotification('Посилання збережено локально.');
+      showNotification('Помилка збереження на сервері');
     } finally {
       setIsSaving(false);
     }
@@ -179,14 +188,31 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
         </div>
       </div>
 
-      {/* Повідомлення про статус / помилку */}
+      {/* Повідомлення про успіх */}
+      {successMessage && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span className="font-medium">{successMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuccessMessage(null)}
+            className="text-emerald-600 hover:text-emerald-900 ml-4 font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Повідомлення про помилку */}
       {errorMessage && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-800 text-xs rounded flex items-center justify-between">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 text-xs rounded flex items-center justify-between">
           <span>{errorMessage}</span>
           <button
             type="button"
             onClick={() => setErrorMessage(null)}
-            className="text-amber-600 hover:text-amber-900 ml-4 font-bold"
+            className="text-red-600 hover:text-red-900 ml-4 font-bold cursor-pointer"
           >
             ✕
           </button>
