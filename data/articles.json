@@ -1,5 +1,18 @@
 [
   {
+    "id": "1790854877822",
+    "title": "Тестова стаття з посиланням",
+    "excerpt": "",
+    "content": "Ось посилання https://youtube.com/watch?v=123",
+    "category": "Загальне",
+    "author": "Редакція The Impart",
+    "coverImage": "https://images.unsplash.com/photo-123",
+    "date": "1 жовтня 2026 р.",
+    "createdAt": "2026-10-01T11:41:17.863Z",
+    "published": true,
+    "publishedEn": false
+  },
+  {
     "id": "1790759389445",
     "title": "Заголовок статті 2",
     "excerpt": "Короткий опис 2",

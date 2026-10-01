@@ -54,17 +54,51 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     );
   };
 
+  const normalizeUrl = (raw: string): string => {
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    // Якщо введено t.me/xxx, instagram.com/xxx тощо - додаємо https://
+    if (trimmed.includes('.') || trimmed.startsWith('@')) {
+      const clean = trimmed.startsWith('@') ? trimmed.slice(1) : trimmed;
+      return `https://${clean}`;
+    }
+    return trimmed;
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
     setErrorMessage(null);
+
+    // Нормалізуємо посилання перед збереженням
+    const normalizedData: SiteSocialLinks = {
+      ua: {
+        telegram: normalizeUrl(formData.ua.telegram || ''),
+        instagram: normalizeUrl(formData.ua.instagram || ''),
+        x: normalizeUrl(formData.ua.x || ''),
+        youtube: normalizeUrl(formData.ua.youtube || ''),
+        threads: normalizeUrl(formData.ua.threads || ''),
+      },
+      en: {
+        telegram: normalizeUrl(formData.en.telegram || ''),
+        instagram: normalizeUrl(formData.en.instagram || ''),
+        x: normalizeUrl(formData.en.x || ''),
+        youtube: normalizeUrl(formData.en.youtube || ''),
+        threads: normalizeUrl(formData.en.threads || ''),
+      },
+    };
+
+    setFormData(normalizedData);
+
     try {
-      await onSaveSocialLinks(formData);
+      await onSaveSocialLinks(normalizedData);
       setHasChanges(false);
       showNotification('Посилання на соц. мережі успішно збережено на сервері!');
     } catch (err: any) {
       console.error('Save social links error:', err);
-      // Оскільки локально зміни вже збережено, повідомляємо користувача м'яко
       setErrorMessage(
         err?.message || 'Сервер тимчасово недоступний, але зміни надійно збережено локально на цьому пристрої.'
       );
@@ -183,7 +217,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
             <span className="text-[10px] text-neutral-400 font-normal lowercase">https://t.me/...</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={currentLinks.telegram || ''}
             onChange={(e) => handleLinkChange(activeLangTab, 'telegram', e.target.value)}
             placeholder="https://t.me/your_channel"
@@ -203,7 +237,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
             <span className="text-[10px] text-neutral-400 font-normal lowercase">https://instagram.com/...</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={currentLinks.instagram || ''}
             onChange={(e) => handleLinkChange(activeLangTab, 'instagram', e.target.value)}
             placeholder="https://instagram.com/your_profile"
@@ -223,7 +257,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
             <span className="text-[10px] text-neutral-400 font-normal lowercase">https://x.com/...</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={currentLinks.x || ''}
             onChange={(e) => handleLinkChange(activeLangTab, 'x', e.target.value)}
             placeholder="https://x.com/your_account"
@@ -243,7 +277,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
             <span className="text-[10px] text-neutral-400 font-normal lowercase">https://youtube.com/@...</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={currentLinks.youtube || ''}
             onChange={(e) => handleLinkChange(activeLangTab, 'youtube', e.target.value)}
             placeholder="https://youtube.com/@your_channel"
@@ -263,7 +297,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
             <span className="text-[10px] text-neutral-400 font-normal lowercase">https://threads.net/@...</span>
           </label>
           <input
-            type="url"
+            type="text"
             value={currentLinks.threads || ''}
             onChange={(e) => handleLinkChange(activeLangTab, 'threads', e.target.value)}
             placeholder="https://threads.net/@your_account"

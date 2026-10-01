@@ -144,22 +144,27 @@ export async function getSocialLinks(): Promise<SiteSocialLinks> {
   return inMemorySocialLinks;
 }
 
-export async function saveSocialLinks(links: Partial<SiteSocialLinks>): Promise<SiteSocialLinks> {
+export async function saveSocialLinks(links: any): Promise<SiteSocialLinks> {
   const current = inMemorySocialLinks;
+
+  // Підтримуємо як структуру { ua: {...}, en: {...} }, так і пряму передачу полів
+  const uaInput = links?.ua || (!links?.en && (links?.telegram || links?.instagram || links?.x || links?.youtube || links?.threads) ? links : {});
+  const enInput = links?.en || {};
+
   const cleaned: SiteSocialLinks = {
     ua: {
-      telegram: links.ua?.telegram !== undefined ? String(links.ua.telegram).trim() : (current.ua.telegram || ''),
-      instagram: links.ua?.instagram !== undefined ? String(links.ua.instagram).trim() : (current.ua.instagram || ''),
-      x: links.ua?.x !== undefined ? String(links.ua.x).trim() : (current.ua.x || ''),
-      youtube: links.ua?.youtube !== undefined ? String(links.ua.youtube).trim() : (current.ua.youtube || ''),
-      threads: links.ua?.threads !== undefined ? String(links.ua.threads).trim() : (current.ua.threads || ''),
+      telegram: uaInput.telegram !== undefined ? String(uaInput.telegram).trim() : (current.ua?.telegram || ''),
+      instagram: uaInput.instagram !== undefined ? String(uaInput.instagram).trim() : (current.ua?.instagram || ''),
+      x: uaInput.x !== undefined ? String(uaInput.x).trim() : (current.ua?.x || ''),
+      youtube: uaInput.youtube !== undefined ? String(uaInput.youtube).trim() : (current.ua?.youtube || ''),
+      threads: uaInput.threads !== undefined ? String(uaInput.threads).trim() : (current.ua?.threads || ''),
     },
     en: {
-      telegram: links.en?.telegram !== undefined ? String(links.en.telegram).trim() : (current.en.telegram || ''),
-      instagram: links.en?.instagram !== undefined ? String(links.en.instagram).trim() : (current.en.instagram || ''),
-      x: links.en?.x !== undefined ? String(links.en.x).trim() : (current.en.x || ''),
-      youtube: links.en?.youtube !== undefined ? String(links.en.youtube).trim() : (current.en.youtube || ''),
-      threads: links.en?.threads !== undefined ? String(links.en.threads).trim() : (current.en.threads || ''),
+      telegram: enInput.telegram !== undefined ? String(enInput.telegram).trim() : (current.en?.telegram || ''),
+      instagram: enInput.instagram !== undefined ? String(enInput.instagram).trim() : (current.en?.instagram || ''),
+      x: enInput.x !== undefined ? String(enInput.x).trim() : (current.en?.x || ''),
+      youtube: enInput.youtube !== undefined ? String(enInput.youtube).trim() : (current.en?.youtube || ''),
+      threads: enInput.threads !== undefined ? String(enInput.threads).trim() : (current.en?.threads || ''),
     },
   };
 

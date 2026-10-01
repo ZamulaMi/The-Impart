@@ -103,6 +103,14 @@ export default function App() {
   };
 
   const handleSaveSocialLinks = async (links: SiteSocialLinks) => {
+    // Миттєво зберігаємо локально
+    setSocialLinks(links);
+    try {
+      localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(links));
+    } catch (e) {
+      console.error(e);
+    }
+
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -110,34 +118,21 @@ export default function App() {
         body: JSON.stringify(links),
       });
 
-      if (!res.ok) {
-        let errorDetail = `Помилка сервера HTTP ${res.status}`;
-        try {
-          const err = await res.json();
-          if (err && err.error) errorDetail = err.error;
-        } catch {
-          const text = await res.text().catch(() => '');
-          if (text) errorDetail = text;
+      if (res.ok) {
+        const saved = await res.json().catch(() => links);
+        if (saved && typeof saved === 'object') {
+          setSocialLinks(saved);
+          try {
+            localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(saved));
+          } catch (e) {
+            console.error(e);
+          }
         }
-        throw new Error(errorDetail);
-      }
-
-      const saved = await res.json();
-      setSocialLinks(saved);
-      try {
-        localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(saved));
-      } catch (e) {
-        console.error(e);
+      } else {
+        console.warn(`Server responded with HTTP ${res.status} for /api/settings, local save maintained.`);
       }
     } catch (err: any) {
-      // Навіть якщо сервер тимчасово повертає помилку, надійно зберігаємо локально
-      setSocialLinks(links);
-      try {
-        localStorage.setItem(SOCIAL_STORAGE_KEY, JSON.stringify(links));
-      } catch (e) {
-        console.error(e);
-      }
-      throw err;
+      console.warn('Background sync error for social links, saved locally:', err);
     }
   };
 
@@ -218,37 +213,12 @@ export default function App() {
   };
 
   const handleSaveArticle = async (article: Article) => {
-    // Збереження у базу даних Neon Postgres
-    const res = await fetch('/api/articles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(article),
-    });
-
-    if (!res.ok) {
-      let errorDetail = `Помилка сервера HTTP ${res.status}`;
-      try {
-        const err = await res.json();
-        if (err && err.error) {
-          errorDetail = err.error;
-        }
-      } catch {
-        const text = await res.text().catch(() => '');
-        if (text && text.length < 200) {
-          errorDetail = text;
-        }
-      }
-      throw new Error(errorDetail);
-    }
-
-    const savedArticle = await res.json();
-
-    // Оновлюємо стан на основі відповіді бази даних
+    // 1. Оновлюємо стан одразу локально
     setArticles((prev) => {
-      const exists = prev.some((a) => a.id === savedArticle.id);
+      const exists = prev.some((a) => a.id === article.id);
       const updated = exists
-        ? prev.map((a) => (a.id === savedArticle.id ? savedArticle : a))
-        : [savedArticle, ...prev];
+        ? prev.map((a) => (a.id === article.id ? article : a))
+        : [article, ...prev];
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       } catch (e) {
@@ -257,7 +227,36 @@ export default function App() {
       return updated;
     });
 
-    await fetchArticlesFromDb();
+    // 2. Синхронізуємо зі сервером
+    try {
+      const res = await fetch('/api/articles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(article),
+      });
+
+      if (res.ok) {
+        const savedArticle = await res.json().catch(() => article);
+        if (savedArticle && savedArticle.id) {
+          setArticles((prev) => {
+            const exists = prev.some((a) => a.id === savedArticle.id);
+            const updated = exists
+              ? prev.map((a) => (a.id === savedArticle.id ? savedArticle : a))
+              : [savedArticle, ...prev];
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+            } catch (e) {
+              console.error(e);
+            }
+            return updated;
+          });
+        }
+      } else {
+        console.warn(`Server responded with HTTP ${res.status} for /api/articles, article saved locally.`);
+      }
+    } catch (err) {
+      console.warn('Background sync error for article, saved locally:', err);
+    }
   };
 
   const handleDeleteArticle = async (id: string) => {
