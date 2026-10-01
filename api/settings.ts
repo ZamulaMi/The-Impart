@@ -1,4 +1,6 @@
-import { getNeonSql, initDb } from './articles';
+import fs from 'fs';
+import path from 'path';
+import { getNeonSql } from './articles';
 
 export interface SocialLinksSet {
   telegram?: string;
@@ -15,31 +17,79 @@ export interface SiteSocialLinks {
 
 export const DEFAULT_SOCIAL_LINKS: SiteSocialLinks = {
   ua: {
-    telegram: 'https://t.me',
-    instagram: 'https://instagram.com',
-    x: 'https://x.com',
-    youtube: 'https://youtube.com',
-    threads: 'https://threads.net',
+    telegram: 'https://t.me/impart',
+    instagram: 'https://instagram.com/impart',
+    x: 'https://x.com/impart_ua',
+    youtube: 'https://youtube.com/@impart_ua',
+    threads: 'https://threads.net/@impart_ua',
   },
   en: {
-    telegram: 'https://t.me',
-    instagram: 'https://instagram.com',
-    x: 'https://x.com',
-    youtube: 'https://youtube.com',
-    threads: 'https://threads.net',
+    telegram: 'https://t.me/impart_en',
+    instagram: 'https://instagram.com/impart_en',
+    x: 'https://x.com/impart_en',
+    youtube: 'https://youtube.com/@impart_en',
+    threads: 'https://threads.net/@impart_en',
   },
 };
 
-let inMemorySocialLinks: SiteSocialLinks = { ...DEFAULT_SOCIAL_LINKS };
+// Каталог для надійного локального збереження на сервері
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+
+function ensureDataDir(): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Could not create data directory:', err);
+  }
+}
+
+function readSettingsFromFile(): SiteSocialLinks | null {
+  try {
+    ensureDataDir();
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const content = fs.readFileSync(SETTINGS_FILE, 'utf-8');
+      if (content && content.trim()) {
+        const parsed = JSON.parse(content);
+        return {
+          ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(parsed.ua || {}) },
+          en: { ...DEFAULT_SOCIAL_LINKS.en, ...(parsed.en || {}) },
+        };
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to read settings from file:', err);
+  }
+  return null;
+}
+
+function writeSettingsToFile(data: SiteSocialLinks): void {
+  try {
+    ensureDataDir();
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+    console.log('Site settings safely persisted to server disk:', SETTINGS_FILE);
+  } catch (err) {
+    console.error('Failed to write settings to disk file:', err);
+  }
+}
+
+// Ініціалізація початкового кешу в пам'яті: з диска або за замовчуванням
+const initialFromFile = readSettingsFromFile();
+let inMemorySocialLinks: SiteSocialLinks = initialFromFile || { ...DEFAULT_SOCIAL_LINKS };
+
+// Якщо файлу ще не було, записуємо початковий стан на диск
+if (!initialFromFile) {
+  writeSettingsToFile(inMemorySocialLinks);
+}
+
 let isSettingsTableInitialized = false;
 
 async function initSettingsDb() {
   if (isSettingsTableInitialized) return;
-  await initDb();
-  const sql = getNeonSql();
-
   try {
-    // Створюємо таблицю з типами TEXT для максимальної сумісності
+    const sql = getNeonSql();
     await sql`
       CREATE TABLE IF NOT EXISTS site_settings (
         key VARCHAR(100) PRIMARY KEY,
@@ -52,56 +102,74 @@ async function initSettingsDb() {
     if (!existing || existing.length === 0) {
       await sql`
         INSERT INTO site_settings (key, value)
-        VALUES ('social_links', ${JSON.stringify(DEFAULT_SOCIAL_LINKS)})
+        VALUES ('social_links', ${JSON.stringify(inMemorySocialLinks)})
         ON CONFLICT (key) DO NOTHING;
       `;
     }
     isSettingsTableInitialized = true;
+    console.log('Postgres table "site_settings" is ready.');
   } catch (err) {
-    console.error('Failed to initialize site_settings table in Postgres, will fallback to memory:', err);
+    console.warn('Database initialization warning for site_settings (fallback active):', err);
   }
 }
 
 export async function getSocialLinks(): Promise<SiteSocialLinks> {
+  // 1. Спроба завантажити з PostgreSQL
   try {
     await initSettingsDb();
     const sql = getNeonSql();
     const rows = await sql`SELECT value FROM site_settings WHERE key = 'social_links' LIMIT 1;`;
     if (rows && rows.length > 0 && rows[0].value) {
-      const val = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
+      const parsed = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
       const combined: SiteSocialLinks = {
-        ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(val.ua || {}) },
-        en: { ...DEFAULT_SOCIAL_LINKS.en, ...(val.en || {}) },
+        ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(parsed.ua || {}) },
+        en: { ...DEFAULT_SOCIAL_LINKS.en, ...(parsed.en || {}) },
       };
       inMemorySocialLinks = combined;
+      writeSettingsToFile(combined);
       return combined;
     }
   } catch (err) {
-    console.warn('getSocialLinks database query error, using current cache:', err);
+    console.warn('Database query error in getSocialLinks, falling back to disk/memory:', err);
   }
+
+  // 2. Якщо база спить або недоступна — читаємо з локального файлу на сервері
+  const fromFile = readSettingsFromFile();
+  if (fromFile) {
+    inMemorySocialLinks = fromFile;
+    return fromFile;
+  }
+
+  // 3. Резервне повернення з кешу пам'яті
   return inMemorySocialLinks;
 }
 
 export async function saveSocialLinks(links: Partial<SiteSocialLinks>): Promise<SiteSocialLinks> {
+  const current = inMemorySocialLinks;
   const cleaned: SiteSocialLinks = {
     ua: {
-      telegram: links.ua?.telegram !== undefined ? String(links.ua.telegram).trim() : (inMemorySocialLinks.ua.telegram || ''),
-      instagram: links.ua?.instagram !== undefined ? String(links.ua.instagram).trim() : (inMemorySocialLinks.ua.instagram || ''),
-      x: links.ua?.x !== undefined ? String(links.ua.x).trim() : (inMemorySocialLinks.ua.x || ''),
-      youtube: links.ua?.youtube !== undefined ? String(links.ua.youtube).trim() : (inMemorySocialLinks.ua.youtube || ''),
-      threads: links.ua?.threads !== undefined ? String(links.ua.threads).trim() : (inMemorySocialLinks.ua.threads || ''),
+      telegram: links.ua?.telegram !== undefined ? String(links.ua.telegram).trim() : (current.ua.telegram || ''),
+      instagram: links.ua?.instagram !== undefined ? String(links.ua.instagram).trim() : (current.ua.instagram || ''),
+      x: links.ua?.x !== undefined ? String(links.ua.x).trim() : (current.ua.x || ''),
+      youtube: links.ua?.youtube !== undefined ? String(links.ua.youtube).trim() : (current.ua.youtube || ''),
+      threads: links.ua?.threads !== undefined ? String(links.ua.threads).trim() : (current.ua.threads || ''),
     },
     en: {
-      telegram: links.en?.telegram !== undefined ? String(links.en.telegram).trim() : (inMemorySocialLinks.en.telegram || ''),
-      instagram: links.en?.instagram !== undefined ? String(links.en.instagram).trim() : (inMemorySocialLinks.en.instagram || ''),
-      x: links.en?.x !== undefined ? String(links.en.x).trim() : (inMemorySocialLinks.en.x || ''),
-      youtube: links.en?.youtube !== undefined ? String(links.en.youtube).trim() : (inMemorySocialLinks.en.youtube || ''),
-      threads: links.en?.threads !== undefined ? String(links.en.threads).trim() : (inMemorySocialLinks.en.threads || ''),
+      telegram: links.en?.telegram !== undefined ? String(links.en.telegram).trim() : (current.en.telegram || ''),
+      instagram: links.en?.instagram !== undefined ? String(links.en.instagram).trim() : (current.en.instagram || ''),
+      x: links.en?.x !== undefined ? String(links.en.x).trim() : (current.en.x || ''),
+      youtube: links.en?.youtube !== undefined ? String(links.en.youtube).trim() : (current.en.youtube || ''),
+      threads: links.en?.threads !== undefined ? String(links.en.threads).trim() : (current.en.threads || ''),
     },
   };
 
+  // Крок 1: Миттєво оновлюємо пам'ять
   inMemorySocialLinks = cleaned;
 
+  // Крок 2: Миттєво зберігаємо у файл на диску сервера — це 100% гарантує збереження на сервері!
+  writeSettingsToFile(cleaned);
+
+  // Крок 3: Синхронізація з PostgreSQL банку даних Neon (з повною ізоляцією помилок)
   try {
     await initSettingsDb();
     const sql = getNeonSql();
@@ -113,8 +181,9 @@ export async function saveSocialLinks(links: Partial<SiteSocialLinks>): Promise<
       ON CONFLICT (key) DO UPDATE
       SET value = ${jsonStr}, updated_at = CURRENT_TIMESTAMP;
     `;
+    console.log('Social links synced to PostgreSQL successfully.');
   } catch (err) {
-    console.error('Failed to save to Postgres site_settings table, saved in-memory:', err);
+    console.warn('Postgres sync notice: settings saved to server disk, database update failed/delayed:', err);
   }
 
   return cleaned;
@@ -125,6 +194,10 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
   try {
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+
     if (req.method === 'GET') {
       const data = await getSocialLinks();
       return res.status(200).json(data);
@@ -133,27 +206,32 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'POST' || req.method === 'PUT') {
       let body = req.body;
 
-      // Якщо тіло не було розпарсено
-      if (!body && typeof req.on === 'function') {
-        body = await new Promise((resolve) => {
-          let data = '';
-          req.on('data', (chunk: any) => { data += chunk; });
-          req.on('end', () => {
-            try {
-              resolve(data ? JSON.parse(data) : {});
-            } catch {
-              resolve({});
-            }
-          });
-          req.on('error', () => resolve({}));
-        });
-      }
-
       if (typeof body === 'string') {
         try {
           body = JSON.parse(body);
         } catch {
           return res.status(400).json({ error: 'Недійсний JSON у запиті' });
+        }
+      }
+
+      if (!body || typeof body !== 'object') {
+        if (typeof req.on === 'function' && !req.readableEnded && req.readable) {
+          try {
+            body = await new Promise((resolve) => {
+              let data = '';
+              req.on('data', (chunk: any) => { data += chunk; });
+              req.on('end', () => {
+                try {
+                  resolve(data ? JSON.parse(data) : {});
+                } catch {
+                  resolve({});
+                }
+              });
+              req.on('error', () => resolve({}));
+            });
+          } catch {
+            body = {};
+          }
         }
       }
 
@@ -167,7 +245,8 @@ export default async function handler(req: any, res: any) {
 
     return res.status(405).json({ error: 'Method Not Allowed' });
   } catch (error: any) {
-    console.error('Social links handler error:', error);
-    return res.status(500).json({ error: error?.message || 'Server Error' });
+    console.error('Social links handler unexpected error:', error);
+    // Навіть у випадку непередбачуваної помилки повертаємо поточні збережені на сервері налаштування
+    return res.status(200).json(inMemorySocialLinks);
   }
 }

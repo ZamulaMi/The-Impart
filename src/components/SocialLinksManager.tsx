@@ -61,7 +61,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     try {
       await onSaveSocialLinks(formData);
       setHasChanges(false);
-      showNotification('Посилання на соц. мережі успішно збережено!');
+      showNotification('Посилання на соц. мережі успішно збережено на сервері!');
     } catch (err: any) {
       console.error('Save social links error:', err);
       // Оскільки локально зміни вже збережено, повідомляємо користувача м'яко

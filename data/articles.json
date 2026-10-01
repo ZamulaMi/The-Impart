@@ -1,0 +1,49 @@
+[
+  {
+    "id": "1790759389445",
+    "title": "Заголовок статті 2",
+    "excerpt": "Короткий опис 2",
+    "content": "Текст статті 2",
+    "category": "Есе",
+    "author": "Редакція The Impart",
+    "date": "30 вересня 2026 р.",
+    "createdAt": "2026-09-30T09:10:13.549Z",
+    "published": true,
+    "categoryEn": "Essay",
+    "publishedEn": false
+  },
+  {
+    "id": "1790724998583",
+    "title": "Заголовок статті",
+    "excerpt": "Короткий опис",
+    "content": "Текст статті\n\nhttps://www.youtube.com/watch?v=YGR_mWuOxMI",
+    "category": "Есе",
+    "author": "Редакція The Impart",
+    "date": "30 вересня 2026 р.",
+    "createdAt": "2026-09-29T23:36:50.455Z",
+    "published": false,
+    "titleEn": "Article Title",
+    "excerptEn": "Excerpt",
+    "contentEn": "Article Content\n\nhttps://www.youtube.com/watch?v=YGR_mWuOxMI",
+    "categoryEn": "Есе",
+    "publishedEn": true
+  },
+  {
+    "id": "2",
+    "title": "Архітектура спостереження: як простір формує досвід",
+    "excerpt": "Чисті лінії, природне світло та відсутність візуального шуму як основа свідомого сприйняття навколишнього середовища.",
+    "content": "Простір навколо нас не є нейтральним. Він або розсіює нашу увагу, або збирає її в одну фокусну точку. Архітектура, яка поважає людину, не намагається вразити масштабом — вона створює умови для внутрішнього діалогу.\n\nСвітло, що падає крізь високі вікна, текстура натурального каменю чи дерева, біла стіна, на якій грають тіні дерев у другій половині дня — це прості речі, що повертають відчуття присутності тут і тепер.",
+    "category": "Архітектура",
+    "author": "Олена Кравченко",
+    "coverImage": "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1400&q=80",
+    "date": "28 вересня 2026",
+    "readTime": "3 хв читання",
+    "createdAt": "2026-09-29T23:07:55.397Z",
+    "published": true,
+    "titleEn": "The Architecture of Observation: How Space Shapes Experience",
+    "excerptEn": "Clean lines, natural light, and the absence of visual noise as the foundation of conscious environmental perception.",
+    "contentEn": "The space around us is never neutral. It either disperses our attention or gathers it into a single focal point. Architecture that respects the individual does not seek to overwhelm by scale — it creates conditions for interior dialogue.\n\nLight descending through tall windows, the texture of natural stone or wood, a white wall where tree shadows play in the late afternoon — these are simple elements that restore our sense of presence in the here and now.",
+    "categoryEn": "Architecture",
+    "publishedEn": true
+  }
+]
