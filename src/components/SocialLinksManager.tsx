@@ -5,17 +5,20 @@ import { SiteSocialLinks, SocialLinksSet } from '../types';
 interface SocialLinksManagerProps {
   socialLinks: SiteSocialLinks;
   onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
+  onRefreshSocialLinks?: () => Promise<void>;
   showNotification: (msg: string) => void;
 }
 
 export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   socialLinks,
   onSaveSocialLinks,
+  onRefreshSocialLinks,
   showNotification,
 }) => {
   const [activeLangTab, setActiveLangTab] = useState<'ua' | 'en'>('ua');
   const [formData, setFormData] = useState<SiteSocialLinks>(socialLinks);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -24,6 +27,28 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
       setFormData(socialLinks);
     }
   }, [socialLinks, hasChanges]);
+
+  // Завантаження актуальних даних при відкритті менеджера
+  useEffect(() => {
+    if (onRefreshSocialLinks) {
+      onRefreshSocialLinks();
+    }
+  }, []);
+
+  const handleRefresh = async () => {
+    if (!onRefreshSocialLinks) return;
+    setIsRefreshing(true);
+    setErrorMessage(null);
+    try {
+      await onRefreshSocialLinks();
+      setHasChanges(false);
+      showNotification('Дані успішно оновлено із сервера!');
+    } catch {
+      showNotification('Не вдалося оновити дані із сервера');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Оновлення посилання для конкретної мови та платформи
   const handleLinkChange = (lang: 'ua' | 'en', platform: keyof SocialLinksSet, value: string) => {
@@ -124,19 +149,34 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving}
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-black text-white text-xs uppercase tracking-wider font-medium rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
-        >
-          {isSaving ? (
-            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-          ) : (
-            <Save className="w-3.5 h-3.5" />
+        <div className="flex items-center gap-2">
+          {onRefreshSocialLinks && (
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing || isSaving}
+              title="Перезавантажити посилання безпосередньо із сервера"
+              className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs tracking-wider font-medium rounded transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Оновити з сервера</span>
+            </button>
           )}
-          <span>{isSaving ? 'Збереження...' : 'Зберегти зміни'}</span>
-        </button>
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-black text-white text-xs uppercase tracking-wider font-medium rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer shrink-0"
+          >
+            {isSaving ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Save className="w-3.5 h-3.5" />
+            )}
+            <span>{isSaving ? 'Збереження...' : 'Зберегти зміни'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Повідомлення про статус / помилку */}

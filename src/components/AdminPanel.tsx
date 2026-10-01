@@ -30,6 +30,7 @@ interface AdminPanelProps {
   onViewArticleOnSite: (id: string) => void;
   socialLinks: SiteSocialLinks;
   onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
+  onRefreshSocialLinks?: () => Promise<void>;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -40,6 +41,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onViewArticleOnSite,
   socialLinks,
   onSaveSocialLinks,
+  onRefreshSocialLinks,
 }) => {
   // Розділ адмін-панелі: за замовчуванням "Редактор статей" ('articles') або "Соц. мережі" ('social_links')
   const [activeSection, setActiveSection] = useState<'articles' | 'social_links'>('articles');
@@ -458,6 +460,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
             <SocialLinksManager
               socialLinks={socialLinks}
               onSaveSocialLinks={onSaveSocialLinks}
+              onRefreshSocialLinks={onRefreshSocialLinks}
               showNotification={showNotification}
             />
           ) : editingArticle ? (

@@ -85,7 +85,10 @@ export default function App() {
 
   const fetchSocialLinksFromDb = async () => {
     try {
-      const res = await fetch('/api/settings');
+      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
       if (res.ok) {
         const data = await res.json();
         if (data && typeof data === 'object') {
@@ -112,9 +115,9 @@ export default function App() {
     }
 
     try {
-      const res = await fetch('/api/settings', {
+      const res = await fetch(`/api/settings?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(links),
       });
 
@@ -138,7 +141,10 @@ export default function App() {
 
   const fetchArticlesFromDb = async () => {
     try {
-      const res = await fetch('/api/articles');
+      const res = await fetch(`/api/articles?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { Accept: 'application/json' },
+      });
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) {
@@ -229,9 +235,9 @@ export default function App() {
 
     // 2. Синхронізуємо зі сервером
     try {
-      const res = await fetch('/api/articles', {
+      const res = await fetch(`/api/articles?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(article),
       });
 
@@ -297,6 +303,7 @@ export default function App() {
         onViewArticleOnSite={(id) => navigateTo('main', id)}
         socialLinks={socialLinks}
         onSaveSocialLinks={handleSaveSocialLinks}
+        onRefreshSocialLinks={fetchSocialLinksFromDb}
       />
     );
   }
