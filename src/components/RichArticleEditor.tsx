@@ -79,6 +79,8 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkText, setLinkText] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
+  const [isEditingExistingLink, setIsEditingExistingLink] = useState(false);
+  const activeLinkElRef = useRef<HTMLAnchorElement | null>(null);
   const savedRangeRef = useRef<Range | null>(null);
 
   const [showTableModal, setShowTableModal] = useState(false);
@@ -337,14 +339,42 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     setActiveDropdown(null);
   };
 
-  // 14. Застосування Telegram спойлера
+  // 14. Застосування / Скасування Telegram спойлера (Toggle Spoiler)
   const handleApplySpoiler = () => {
+    saveSelection();
     const sel = window.getSelection();
-    const selectedText = sel ? sel.toString() : '';
+    if (!sel || sel.rangeCount === 0) return;
+
+    // Перевіряємо, чи курсор або виділений текст вже всередині існуючого спойлера
+    let node: Node | null = sel.anchorNode;
+    let spoilerEl: HTMLElement | null = null;
+    while (node && node !== visualEditorRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).classList.contains('tg-spoiler')) {
+        spoilerEl = node as HTMLElement;
+        break;
+      }
+      node = node.parentNode;
+    }
+
+    // Якщо всередині спойлера — ВІДМІНЯЄМО СПОЙЛЕР (розгортаємо текст назад у звичайний)
+    if (spoilerEl) {
+      const parent = spoilerEl.parentNode;
+      if (parent) {
+        while (spoilerEl.firstChild) {
+          parent.insertBefore(spoilerEl.firstChild, spoilerEl);
+        }
+        spoilerEl.remove();
+        if (visualEditorRef.current) {
+          pushToHistoryAndEmit(visualEditorRef.current.innerHTML);
+        }
+      }
+      return;
+    }
+
+    // Якщо ні — застосовуємо спойлер без рамок та сірих блоків
+    const selectedText = sel.toString();
     insertVisualHtml(
-      `<span class="tg-spoiler" data-spoiler="true" style="background: #e5e7eb; border-radius: 3px; padding: 2px 6px; border: 1px solid #d1d5db; cursor: pointer;">${
-        selectedText || 'прихований текст'
-      }</span>&nbsp;`
+      `<span class="tg-spoiler" data-spoiler="true">${selectedText || 'прихований текст'}</span>&nbsp;`
     );
   };
 
@@ -381,16 +411,41 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     setActiveDropdown(null);
   };
 
-  // 16. Відкриття вікна посилання
-  const handleOpenLinkModal = () => {
+  // 16. Відкриття вікна посилання (створення нового або редагування наявного)
+  const handleOpenLinkModal = (existingLinkEl?: HTMLAnchorElement | null) => {
     saveSelection();
     const sel = window.getSelection();
-    setLinkText(sel ? sel.toString() : '');
-    setLinkUrl('');
+
+    let targetLink: HTMLAnchorElement | null = existingLinkEl || null;
+
+    if (!targetLink && sel && sel.anchorNode) {
+      let node: Node | null = sel.anchorNode;
+      while (node && node !== visualEditorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).tagName.toLowerCase() === 'a') {
+          targetLink = node as HTMLAnchorElement;
+          break;
+        }
+        node = node.parentNode;
+      }
+    }
+
+    activeLinkElRef.current = targetLink;
+
+    if (targetLink) {
+      setIsEditingExistingLink(true);
+      setLinkText(targetLink.textContent || '');
+      setLinkUrl(targetLink.getAttribute('href') || '');
+    } else {
+      setIsEditingExistingLink(false);
+      setLinkText(sel ? sel.toString() : '');
+      setLinkUrl('');
+    }
+
     setShowLinkModal(true);
     setActiveDropdown(null);
   };
 
+  // Збереження посилання (нового або відредагованого)
   const handleApplyLink = () => {
     if (!linkUrl.trim()) return;
     let cleanUrl = linkUrl.trim();
@@ -398,15 +453,44 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
       !cleanUrl.startsWith('http://') &&
       !cleanUrl.startsWith('https://') &&
       !cleanUrl.startsWith('/') &&
-      !cleanUrl.startsWith('mailto:')
+      !cleanUrl.startsWith('mailto:') &&
+      !cleanUrl.startsWith('tel:')
     ) {
       cleanUrl = `https://${cleanUrl}`;
     }
     const title = linkText.trim() || cleanUrl;
-    insertVisualHtml(
-      `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer" style="color: #000; text-decoration: underline; text-underline-offset: 4px; font-weight: 500;">${title}</a>&nbsp;`
-    );
+
+    if (activeLinkElRef.current) {
+      // Оновлюємо існуюче посилання
+      activeLinkElRef.current.setAttribute('href', cleanUrl);
+      activeLinkElRef.current.textContent = title;
+      if (visualEditorRef.current) {
+        pushToHistoryAndEmit(visualEditorRef.current.innerHTML);
+      }
+    } else {
+      // Вставляємо нове посилання
+      insertVisualHtml(
+        `<a href="${cleanUrl}" target="_blank" rel="noopener noreferrer">${title}</a>&nbsp;`
+      );
+    }
     setShowLinkModal(false);
+    activeLinkElRef.current = null;
+  };
+
+  // Видалення посилання (розлінкування у звичайний текст)
+  const handleRemoveLink = () => {
+    if (activeLinkElRef.current) {
+      const parent = activeLinkElRef.current.parentNode;
+      if (parent) {
+        const textNode = document.createTextNode(activeLinkElRef.current.textContent || '');
+        parent.replaceChild(textNode, activeLinkElRef.current);
+        if (visualEditorRef.current) {
+          pushToHistoryAndEmit(visualEditorRef.current.innerHTML);
+        }
+      }
+    }
+    setShowLinkModal(false);
+    activeLinkElRef.current = null;
   };
 
   // 17. Вставка таблиці
@@ -1028,7 +1112,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
-            onClick={handleOpenLinkModal}
+            onClick={() => handleOpenLinkModal()}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Зробити посиланням (Ctrl+K)"
           >
@@ -1145,6 +1229,16 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               const html = e.currentTarget.innerHTML;
               pushToHistoryAndEmit(html);
             }}
+            onClick={(e) => {
+              saveSelection();
+              const target = e.target as HTMLElement;
+              const linkEl = target.closest('a');
+              if (linkEl && visualEditorRef.current?.contains(linkEl)) {
+                e.preventDefault();
+                e.stopPropagation();
+                handleOpenLinkModal(linkEl as HTMLAnchorElement);
+              }
+            }}
             onKeyDown={handleVisualKeyDown}
             onKeyUp={saveSelection}
             onMouseUp={saveSelection}
@@ -1163,6 +1257,16 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               onInput={(e) => {
                 const html = e.currentTarget.innerHTML;
                 pushToHistoryAndEmit(html);
+              }}
+              onClick={(e) => {
+                saveSelection();
+                const target = e.target as HTMLElement;
+                const linkEl = target.closest('a');
+                if (linkEl && visualEditorRef.current?.contains(linkEl)) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleOpenLinkModal(linkEl as HTMLAnchorElement);
+                }
               }}
               onKeyDown={handleVisualKeyDown}
               onKeyUp={saveSelection}
@@ -1246,7 +1350,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
                 <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
                   <LinkIcon className="w-4 h-4 text-blue-600" />
-                  <span>Вставити посилання</span>
+                  <span>{isEditingExistingLink ? 'Редагувати посилання' : 'Вставити посилання'}</span>
                 </h3>
                 <button
                   type="button"
@@ -1293,26 +1397,41 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                         handleApplyLink();
                       }
                     }}
-                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
+                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-[#0089ff] focus:outline-none font-mono text-xs"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
-                  <button
-                    type="button"
-                    onClick={() => setShowLinkModal(false)}
-                    className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
-                  >
-                    Скасувати
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyLink}
-                    disabled={!linkUrl.trim()}
-                    className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
-                  >
-                    Вставити посилання
-                  </button>
+                <div className="flex items-center justify-between gap-2 pt-3 border-t border-neutral-100">
+                  {isEditingExistingLink ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLink}
+                      className="px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 rounded transition-colors cursor-pointer"
+                      title="Видалити посилання і залишити звичайний текст"
+                    >
+                      Видалити посилання
+                    </button>
+                  ) : (
+                    <div />
+                  )}
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowLinkModal(false)}
+                      className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                    >
+                      Скасувати
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleApplyLink}
+                      disabled={!linkUrl.trim()}
+                      className="px-4 py-2 text-xs font-medium bg-[#0089ff] hover:bg-[#0070d6] text-white rounded transition-colors disabled:opacity-50 cursor-pointer shadow-xs"
+                    >
+                      {isEditingExistingLink ? 'Зберегти зміни' : 'Вставити посилання'}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

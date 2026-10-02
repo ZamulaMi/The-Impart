@@ -73,9 +73,8 @@ export function markdownToHtml(md: string): string {
   html = html.replace(/^- \[x\]\s*(.*)$/gm, '<div class="checklist-item checked" style="display: flex; align-items: center; gap: 8px; margin: 6px 0;"><input type="checkbox" checked onclick="return false;" /> <span style="text-decoration: line-through; color: #9ca3af;">$1</span></div>');
   html = html.replace(/^- \[ \]\s*(.*)$/gm, '<div class="checklist-item" style="display: flex; align-items: center; gap: 8px; margin: 6px 0;"><input type="checkbox" onclick="return false;" /> <span>$1</span></div>');
 
-  // 9. Інлайн елементи:
-  // Telegram спойлер: ||text||
-  html = html.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" data-spoiler="true" style="background: #e5e7eb; border-radius: 3px; padding: 2px 6px; border: 1px solid #d1d5db; cursor: pointer;">$1</span>');
+  // Telegram спойлер: ||text|| (без сірого блоку та рамок)
+  html = html.replace(/\|\|(.*?)\|\|/g, '<span class="tg-spoiler" data-spoiler="true">$1</span>');
 
   // Хайлайтери
   html = html.replace(/\[hl:([a-z0-9#-]+)\](.*?)\[\/hl\]/gi, (_, color, text) => {
@@ -100,8 +99,11 @@ export function markdownToHtml(md: string): string {
   html = html.replace(/\[font:sans\](.*?)\[\/font\]/gi, '<span style="font-family: -apple-system, BlinkMacSystemFont, sans-serif;">$1</span>');
   html = html.replace(/\[font:mono\](.*?)\[\/font\]/gi, '<span style="font-family: monospace; font-size: 0.9em; background: #f3f4f6; padding: 2px 4px; border-radius: 3px;">$1</span>');
 
-  // Посилання: [label](url)
-  html = html.replace(/(?<!!)\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #000; text-decoration: underline; text-underline-offset: 4px; font-weight: 500;">$1</a>');
+  // Посилання: [label](url) - колір #0089ff з дуже тонкою лінією підкреслення
+  html = html.replace(
+    /(?<!!)\[(.*?)\]\((.*?)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #0089ff; text-decoration: underline; text-decoration-color: rgba(0, 137, 255, 0.4); text-decoration-thickness: 1px; text-underline-offset: 3px; font-weight: 500;">$1</a>'
+  );
 
   // Жирний, курсив, закреслений, підкреслений
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');

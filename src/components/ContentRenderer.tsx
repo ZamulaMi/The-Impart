@@ -35,7 +35,7 @@ export function isImageUrl(url: string): boolean {
   return false;
 }
 
-// Telegram-style Spoiler компонент (інтерактивний клік для розкриття/приховування)
+// Telegram-style Spoiler компонент: чисте розмиття без сірого фону та рамок
 export const TelegramSpoiler: React.FC<{ text: string }> = ({ text }) => {
   const [revealed, setRevealed] = useState(false);
 
@@ -45,21 +45,18 @@ export const TelegramSpoiler: React.FC<{ text: string }> = ({ text }) => {
         e.stopPropagation();
         setRevealed(!revealed);
       }}
-      title={revealed ? 'Натисніть, щоб приховати спойлер' : 'Натисніть, щоб відкрити спойлер'}
-      className={`relative inline-block cursor-pointer select-none rounded px-1.5 py-0.5 transition-all duration-300 align-baseline ${
-        revealed
-          ? 'bg-neutral-200/80 text-neutral-900 border border-neutral-300 shadow-xs'
-          : 'bg-neutral-800 text-transparent hover:bg-neutral-700 blur-[2px] hover:blur-[1px]'
+      title={revealed ? 'Натисніть, щоб приховати спойлер' : 'Натисніть, щоб переглянути прихований текст'}
+      className={`cursor-pointer transition-all duration-300 inline align-baseline ${
+        revealed ? 'filter-none select-auto' : 'blur-[5px] select-none hover:blur-[3px]'
       }`}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        outline: 'none',
+        padding: 0,
+      }}
     >
-      <span className={revealed ? '' : 'opacity-0 select-none pointer-events-none'}>
-        {renderInlineFormatting(text)}
-      </span>
-      {!revealed && (
-        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tracking-widest text-white/90 uppercase select-none">
-          спойлер
-        </span>
-      )}
+      {renderInlineFormatting(text)}
     </span>
   );
 };
@@ -179,10 +176,14 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
             href={url}
             target={isExternal ? '_blank' : undefined}
             rel={isExternal ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-baseline gap-1 text-black font-medium underline underline-offset-4 decoration-neutral-400 hover:decoration-black hover:text-neutral-900 transition-colors cursor-pointer"
+            className="inline-flex items-baseline gap-1 font-medium underline underline-offset-3 decoration-1 transition-colors cursor-pointer"
+            style={{
+              color: '#0089ff',
+              textDecorationColor: 'rgba(0, 137, 255, 0.45)',
+            }}
           >
             <span>{renderInlineFormatting(label)}</span>
-            {isExternal && <ExternalLink className="w-3 h-3 self-center text-neutral-400 inline" />}
+            {isExternal && <ExternalLink className="w-3 h-3 self-center opacity-70 inline" />}
           </a>
         );
       }
