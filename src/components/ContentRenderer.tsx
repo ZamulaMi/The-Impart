@@ -561,6 +561,66 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
 
   if (!content) return null;
 
+  // Якщо контент містить HTML-розмітку від візуального редактора
+  const isHtml = /<(p|h[1-6]|table|blockquote|ul|ol|figure|div|mark)[^>]*>/i.test(content);
+
+  if (isHtml) {
+    return (
+      <div className="article-rendered-html space-y-6 text-neutral-800 leading-relaxed font-serif text-base sm:text-lg">
+        <div
+          dangerouslySetInnerHTML={{ __html: content }}
+          onClick={(e) => {
+            const target = e.target as HTMLElement;
+
+            // Клік на зображення для зуму
+            if (target.tagName.toLowerCase() === 'img') {
+              const img = target as HTMLImageElement;
+              const figcaption = target.closest('figure')?.querySelector('figcaption')?.textContent;
+              setLightboxImg({ src: img.src, caption: figcaption || img.alt });
+            }
+
+            // Клік на Telegram-спойлер для розкриття/приховування
+            const spoilerEl = target.closest('.tg-spoiler') as HTMLElement;
+            if (spoilerEl) {
+              spoilerEl.classList.toggle('revealed');
+            }
+          }}
+        />
+
+        {/* Lightbox модальне вікно для фотографій */}
+        {lightboxImg && (
+          <div
+            onClick={() => setLightboxImg(null)}
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 animate-fade-in"
+          >
+            <button
+              onClick={() => setLightboxImg(null)}
+              className="absolute top-4 right-4 p-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-colors cursor-pointer"
+              title="Закрити (Esc)"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-5xl max-h-[90vh] flex flex-col items-center"
+            >
+              <img
+                src={lightboxImg.src}
+                alt={lightboxImg.caption || 'Зображення'}
+                className="max-h-[82vh] w-auto max-w-full rounded-md object-contain shadow-2xl"
+              />
+              {lightboxImg.caption && (
+                <p className="text-white/80 text-xs sm:text-sm mt-3 text-center font-sans max-w-xl">
+                  {lightboxImg.caption}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   const blocks = parseContentToBlocks(content);
 
   return (

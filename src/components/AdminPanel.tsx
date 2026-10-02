@@ -266,6 +266,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
     try {
       await onSaveArticle(finalArticle);
+      try {
+        localStorage.removeItem(`impart_autosave_${finalArticle.id}_ua`);
+        localStorage.removeItem(`impart_autosave_${finalArticle.id}_en`);
+        localStorage.removeItem(`impart_autosave_new_ua`);
+        localStorage.removeItem(`impart_autosave_new_en`);
+      } catch {}
       showNotification(
         isCreatingNew
           ? 'Статтю успішно створено та збережено у базі даних!'
@@ -604,6 +610,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onChange={(val) => setEditingArticle({ ...editingArticle, content: val })}
                       placeholder="Напишіть текст статті українською тут..."
                       lang="ua"
+                      articleId={editingArticle.id || 'new'}
                       minHeight="420px"
                     />
                   </div>
@@ -733,6 +740,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onChange={(val) => setEditingArticle({ ...editingArticle, contentEn: val })}
                       placeholder="Write English article content here..."
                       lang="en"
+                      articleId={editingArticle.id || 'new'}
                       minHeight="420px"
                     />
                   </div>
