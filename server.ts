@@ -1,9 +1,14 @@
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import articlesHandler, { getArticles } from './api/articles';
 import settingsHandler, { getSocialLinks } from './api/settings';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
@@ -49,6 +54,48 @@ app.all(['/api/articles', '/api/articles/*'], async (req, res) => {
         return res.status(200).json([]);
       }
     }
+  }
+});
+
+// Роздача завантажених файлів (зображень)
+const uploadsDir = path.resolve(__dirname, 'data/uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use('/uploads', express.static(uploadsDir));
+
+// Ендпоінт для завантаження зображень (збереження на сервері)
+app.post('/api/upload', (req, res) => {
+  try {
+    const { data, filename } = req.body || {};
+    if (!data || typeof data !== 'string') {
+      return res.status(400).json({ error: 'Зображення не передано' });
+    }
+
+    const matches = data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+    if (!matches || matches.length !== 3) {
+      // Якщо це вже URL або прямий лінк
+      if (data.startsWith('http://') || data.startsWith('https://')) {
+        return res.status(200).json({ url: data });
+      }
+      return res.status(400).json({ error: 'Недійсний формат зображення (очікується Base64 або URL)' });
+    }
+
+    const mimeType = matches[1];
+    const base64Data = matches[2];
+    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
+    const cleanName = (filename || 'img').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    const saveName = `${Date.now()}_${cleanName}.${ext}`;
+    const filePath = path.join(uploadsDir, saveName);
+
+    fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+    return res.status(200).json({
+      url: `/uploads/${saveName}`,
+      filename: saveName,
+    });
+  } catch (err: any) {
+    console.error('Upload error in server:', err);
+    return res.status(500).json({ error: 'Помилка збереження файлу на сервері' });
   }
 });
 

@@ -16,11 +16,13 @@ import {
   Copy,
   FileText,
   Share2,
+  Upload,
 } from 'lucide-react';
 import { Article, SiteSocialLinks } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
 import { ContentRenderer } from './ContentRenderer';
 import { SocialLinksManager } from './SocialLinksManager';
+import { RichArticleEditor } from './RichArticleEditor';
 
 interface AdminPanelProps {
   articles: Article[];
@@ -66,6 +68,75 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     url: string;
     caption: string;
   } | null>(null);
+
+  const coverFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
+
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingCover(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            let width = img.width;
+            let height = img.height;
+            const maxDim = 1920;
+            if (width > maxDim || height > maxDim) {
+              if (width > height) {
+                height = Math.round((height * maxDim) / width);
+                width = maxDim;
+              } else {
+                width = Math.round((width * maxDim) / height);
+                height = maxDim;
+              }
+            }
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              resolve(event.target?.result as string);
+              return;
+            }
+            ctx.drawImage(img, 0, 0, width, height);
+            resolve(canvas.toDataURL('image/jpeg', 0.88));
+          };
+          img.onerror = () => reject(new Error('Не вдалося завантажити зображення'));
+          img.src = event.target?.result as string;
+        };
+        reader.onerror = () => reject(new Error('Помилка читання файлу'));
+        reader.readAsDataURL(file);
+      });
+
+      let finalUrl = dataUrl;
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: dataUrl, filename: file.name }),
+        });
+        if (res.ok) {
+          const resJson = await res.json();
+          if (resJson.url) finalUrl = resJson.url;
+        }
+      } catch {}
+
+      setEditingArticle((prev) => ({
+        ...prev,
+        coverImage: finalUrl,
+      }));
+      showNotification('Головну обкладинку успішно завантажено!');
+    } catch {
+      showNotification('Помилка завантаження фотографії');
+    } finally {
+      setIsUploadingCover(false);
+    }
+  };
 
   const showNotification = (msg: string) => {
     setNotification(msg);
@@ -550,21 +621,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                      URL головної обкладинки
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                        Головна обкладинка статті
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => coverFileInputRef.current?.click()}
+                        disabled={isUploadingCover}
+                        className="inline-flex items-center gap-1.5 text-xs text-neutral-800 hover:text-black font-medium cursor-pointer underline disabled:opacity-50"
+                      >
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>{isUploadingCover ? 'Завантаження...' : 'Завантажити файл'}</span>
+                      </button>
+                    </div>
+                    <input
+                      type="file"
+                      ref={coverFileInputRef}
+                      accept="image/*"
+                      onChange={handleCoverFileChange}
+                      className="hidden"
+                    />
                     <input
                       type="url"
-                      placeholder="https://images.unsplash.com/..."
+                      placeholder="https://images.unsplash.com/... або завантажте файл кнопкою вище"
                       value={editingArticle.coverImage || ''}
                       onChange={(e) => setEditingArticle({ ...editingArticle, coverImage: e.target.value })}
-                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors bg-transparent"
+                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors bg-transparent font-mono text-xs"
                     />
                   </div>
                 </div>
 
                 {editingArticle.coverImage && (
-                  <div className="aspect-[16/9] max-h-40 overflow-hidden rounded bg-neutral-100">
+                  <div className="relative aspect-[16/9] max-h-48 overflow-hidden rounded-md bg-neutral-100 border border-neutral-200 group">
                     <img
                       src={editingArticle.coverImage}
                       alt="Обкладинка"
@@ -573,6 +662,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         (e.target as HTMLImageElement).style.display = 'none';
                       }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setEditingArticle({ ...editingArticle, coverImage: '' })}
+                      title="Видалити обкладинку"
+                      className="absolute top-2 right-2 p-1.5 bg-black/70 hover:bg-black text-white rounded-full transition-colors cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
               </div>
@@ -630,75 +727,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  {/* Текст UA + медіа інструменти */}
+                  {/* Текст UA + розширені інструменти форматування */}
                   <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
-                        Текст статті (UA) *
-                      </label>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
-                        >
-                          <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
-                          <span>+ Фото</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
-                        >
-                          <VideoIcon className="w-3.5 h-3.5 text-red-600" />
-                          <span>+ YouTube</span>
-                        </button>
-
-                        <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditorTab('edit')}
-                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                              editorTab === 'edit'
-                                ? 'bg-black text-white font-medium'
-                                : 'bg-white text-neutral-600 hover:text-black'
-                            }`}
-                          >
-                            Текст
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditorTab('preview')}
-                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                              editorTab === 'preview'
-                                ? 'bg-black text-white font-medium'
-                                : 'bg-white text-neutral-600 hover:text-black'
-                            }`}
-                          >
-                            Прев'ю
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {editorTab === 'edit' ? (
-                      <div>
-                        <textarea
-                          rows={12}
-                          required
-                          placeholder="Напишіть текст статті українською тут..."
-                          value={editingArticle.content || ''}
-                          onChange={(e) => setEditingArticle({ ...editingArticle, content: e.target.value })}
-                          className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
-                        />
-                      </div>
-                    ) : (
-                      <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[250px]">
-                        <ContentRenderer content={editingArticle.content || ''} />
-                      </div>
-                    )}
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Текст статті (UA) *
+                    </label>
+                    <RichArticleEditor
+                      value={editingArticle.content || ''}
+                      onChange={(val) => setEditingArticle({ ...editingArticle, content: val })}
+                      placeholder="Напишіть текст статті українською тут..."
+                      lang="ua"
+                      minHeight="420px"
+                    />
                   </div>
 
                   {/* Перемикач видимості української версії */}
@@ -816,74 +856,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  {/* Текст EN + медіа інструменти */}
+                  {/* Текст EN + розширені інструменти форматування */}
                   <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2.5">
-                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
-                        Article Content (EN)
-                      </label>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setMediaDialog({ type: 'photo', url: '', caption: '' })}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded transition-colors cursor-pointer"
-                        >
-                          <ImageIcon className="w-3.5 h-3.5 text-neutral-600" />
-                          <span>+ Photo</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setMediaDialog({ type: 'youtube', url: '', caption: '' })}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-red-50 hover:bg-red-100 text-red-700 rounded transition-colors cursor-pointer"
-                        >
-                          <VideoIcon className="w-3.5 h-3.5 text-red-600" />
-                          <span>+ YouTube</span>
-                        </button>
-
-                        <div className="flex items-center border border-neutral-200 rounded overflow-hidden ml-1">
-                          <button
-                            type="button"
-                            onClick={() => setEditorTab('edit')}
-                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                              editorTab === 'edit'
-                                ? 'bg-black text-white font-medium'
-                                : 'bg-white text-neutral-600 hover:text-black'
-                            }`}
-                          >
-                            Text
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setEditorTab('preview')}
-                            className={`px-3 py-1 text-xs transition-colors cursor-pointer ${
-                              editorTab === 'preview'
-                                ? 'bg-black text-white font-medium'
-                                : 'bg-white text-neutral-600 hover:text-black'
-                            }`}
-                          >
-                            Preview
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {editorTab === 'edit' ? (
-                      <div>
-                        <textarea
-                          rows={12}
-                          placeholder="Write English article content here..."
-                          value={editingArticle.contentEn || ''}
-                          onChange={(e) => setEditingArticle({ ...editingArticle, contentEn: e.target.value })}
-                          className="w-full text-sm sm:text-base border border-neutral-200 p-4 leading-relaxed focus:border-black focus:outline-none transition-colors font-serif"
-                        />
-                      </div>
-                    ) : (
-                      <div className="border border-neutral-200 p-6 rounded bg-neutral-50/40 min-h-[250px]">
-                        <ContentRenderer content={editingArticle.contentEn || ''} />
-                      </div>
-                    )}
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                      Article Content (EN)
+                    </label>
+                    <RichArticleEditor
+                      value={editingArticle.contentEn || ''}
+                      onChange={(val) => setEditingArticle({ ...editingArticle, contentEn: val })}
+                      placeholder="Write English article content here..."
+                      lang="en"
+                      minHeight="420px"
+                    />
                   </div>
 
                   {/* Перемикач видимості англійської версії */}
