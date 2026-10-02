@@ -10,8 +10,6 @@ import {
   Square,
   ZoomIn,
   X,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 
 interface ContentRendererProps {
@@ -21,7 +19,8 @@ interface ContentRendererProps {
 // Видобування YouTube Video ID
 export function getYouTubeId(url: string): string | null {
   const clean = url.trim();
-  const regExp = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
+  const regExp =
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/i;
   const match = clean.match(regExp);
   return match ? match[1] : null;
 }
@@ -36,27 +35,29 @@ export function isImageUrl(url: string): boolean {
   return false;
 }
 
-// Telegram-style Spoiler компонент
-const Spoiler: React.FC<{ text: string }> = ({ text }) => {
+// Telegram-style Spoiler компонент (інтерактивний клік для розкриття/приховування)
+export const TelegramSpoiler: React.FC<{ text: string }> = ({ text }) => {
   const [revealed, setRevealed] = useState(false);
 
   return (
     <span
-      onClick={() => setRevealed(!revealed)}
-      title={revealed ? 'Приховати спойлер' : 'Натисніть, щоб переглянути прихований текст'}
-      className={`relative inline-block cursor-pointer select-none rounded px-1.5 py-0.5 transition-all duration-200 ${
+      onClick={(e) => {
+        e.stopPropagation();
+        setRevealed(!revealed);
+      }}
+      title={revealed ? 'Натисніть, щоб приховати спойлер' : 'Натисніть, щоб відкрити спойлер'}
+      className={`relative inline-block cursor-pointer select-none rounded px-1.5 py-0.5 transition-all duration-300 align-baseline ${
         revealed
-          ? 'bg-neutral-100 text-neutral-900 border border-neutral-300'
+          ? 'bg-neutral-200/80 text-neutral-900 border border-neutral-300 shadow-xs'
           : 'bg-neutral-800 text-transparent hover:bg-neutral-700 blur-[2px] hover:blur-[1px]'
       }`}
-      style={{
-        textShadow: revealed ? 'none' : '0 0 8px rgba(0,0,0,0.5)',
-      }}
     >
-      <span className={revealed ? '' : 'opacity-0 select-none'}>{text}</span>
+      <span className={revealed ? '' : 'opacity-0 select-none pointer-events-none'}>
+        {renderInlineFormatting(text)}
+      </span>
       {!revealed && (
-        <span className="absolute inset-0 flex items-center justify-center text-[10px] text-white/80 font-mono tracking-widest uppercase">
-          spoiler
+        <span className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tracking-widest text-white/90 uppercase select-none">
+          спойлер
         </span>
       )}
     </span>
@@ -67,21 +68,21 @@ const Spoiler: React.FC<{ text: string }> = ({ text }) => {
 export const renderInlineFormatting = (text: string): React.ReactNode => {
   if (!text) return null;
 
-  // Токенізація через регулярний вираз для підтримки комбінованого форматування
-  // Паттерни:
-  // 1. Spoilers: ||spoiler||
+  // Виділяємо зображення, які можуть бути в тексті, щоб посилання не перехопило ![alt](url)
+  // Паттерни в порядку пріоритету:
+  // 1. Spoilers: ||text||
   // 2. Highlighters: [hl:color]text[/hl] or ==text==
-  // 3. Colors: [color:code]text[/color]
-  // 4. Fonts: [font:type]text[/font]
-  // 5. Links: [label](url)
+  // 3. Colors: [color:#code]text[/color]
+  // 4. Fonts: [font:serif|sans|mono]text[/font]
+  // 5. Links: [label](url) (але не ![alt](url))
   // 6. Bold: **text** or <b>text</b>
   // 7. Italic: *text* or <i>text</i>
-  // 8. Strikethrough: ~~text~~
-  // 9. Underline: <u>text</u>
+  // 8. Strikethrough: ~~text~~ or <s>text</s>
+  // 9. Underline: <u>text</u> or [u]text[/u]
   // 10. Code: `code`
 
   const regex =
-    /(\|\|[\s\S]*?\|\||\[hl:([a-z0-9#-]+)\][\s\S]*?\[\/hl\]|==[\s\S]*?==|\[color:([#a-zA-Z0-9]+)\][\s\S]*?\[\/color\]|\[font:(serif|sans|mono)\][\s\S]*?\[\/font\]|\[(.*?)\]\((https?:\/\/[^\s)]+|\/[^\s)]+|mailto:[^\s)]+|tel:[^\s)]+)\)|\*\*([^*]+)\*\*|__([^_]+)__|(?<!\*)\*([^*]+)\*(?!\*)|~~([^~]+)~~|<u>(.*?)<\/u>|`([^`]+)`)/g;
+    /(\|\|[\s\S]*?\|\||\[hl:([a-z0-9#-]+)\][\s\S]*?\[\/hl\]|==[\s\S]*?==|\[color:([#a-zA-Z0-9]+)\][\s\S]*?\[\/color\]|\[font:(serif|sans|mono)\][\s\S]*?\[\/font\]|(?<!!)\[(.*?)\]\((https?:\/\/[^\s)]+|\/[^\s)]+|mailto:[^\s)]+|tel:[^\s)]+)\)|\*\*([^*]+)\*\*|<b>(.*?)<\/b>|(?<!\*)\*([^*]+)\*(?!\*)|<i>(.*?)<\/i>|~~([^~]+)~~|<s>(.*?)<\/s>|<u>(.*?)<\/u>|\[u\](.*?)\[\/u\]|`([^`]+)`)/g;
 
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
@@ -95,30 +96,30 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
       parts.push(text.slice(lastIndex, matchIndex));
     }
 
-    const key = `inline_${matchIndex}_${fullMatch.slice(0, 8)}`;
+    const key = `inline_${matchIndex}_${fullMatch.slice(0, 10)}`;
 
-    // 1. Telegram-style Spoiler: ||text||
+    // 1. Telegram Spoiler: ||text||
     if (fullMatch.startsWith('||') && fullMatch.endsWith('||')) {
       const inner = fullMatch.slice(2, -2);
-      parts.push(<Spoiler key={key} text={inner} />);
+      parts.push(<TelegramSpoiler key={key} text={inner} />);
     }
     // 2. Highlighter: [hl:color]text[/hl]
     else if (fullMatch.startsWith('[hl:') && fullMatch.endsWith('[/hl]')) {
       const colorMatch = fullMatch.match(/^\[hl:([a-z0-9#-]+)\]([\s\S]*?)\[\/hl\]$/);
       if (colorMatch) {
-        const colorName = colorMatch[1];
+        const colorName = colorMatch[1].toLowerCase();
         const inner = colorMatch[2];
         const bgClasses: Record<string, string> = {
-          yellow: 'bg-yellow-200 text-neutral-900',
-          green: 'bg-emerald-200 text-neutral-900',
-          blue: 'bg-sky-200 text-neutral-900',
-          pink: 'bg-pink-200 text-neutral-900',
-          orange: 'bg-amber-200 text-neutral-900',
-          purple: 'bg-purple-200 text-neutral-900',
+          yellow: 'bg-yellow-200 text-neutral-900 border-b border-yellow-400/50',
+          green: 'bg-emerald-200 text-neutral-900 border-b border-emerald-400/50',
+          blue: 'bg-sky-200 text-neutral-900 border-b border-sky-400/50',
+          pink: 'bg-pink-200 text-neutral-900 border-b border-pink-400/50',
+          orange: 'bg-amber-200 text-neutral-900 border-b border-amber-400/50',
+          purple: 'bg-purple-200 text-neutral-900 border-b border-purple-400/50',
         };
         const cls = bgClasses[colorName] || 'bg-yellow-200 text-neutral-900';
         parts.push(
-          <mark key={key} className={`${cls} px-1.5 py-0.5 rounded-sm font-inherit`}>
+          <mark key={key} className={`${cls} px-1.5 py-0.5 rounded-xs font-inherit`}>
             {renderInlineFormatting(inner)}
           </mark>
         );
@@ -128,7 +129,7 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
     else if (fullMatch.startsWith('==') && fullMatch.endsWith('==')) {
       const inner = fullMatch.slice(2, -2);
       parts.push(
-        <mark key={key} className="bg-yellow-200 text-neutral-900 px-1.5 py-0.5 rounded-sm font-inherit">
+        <mark key={key} className="bg-yellow-200 text-neutral-900 px-1.5 py-0.5 rounded-xs font-inherit">
           {renderInlineFormatting(inner)}
         </mark>
       );
@@ -186,35 +187,51 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
         );
       }
     }
-    // 7. Bold: **text**
-    else if (fullMatch.startsWith('**') && fullMatch.endsWith('**')) {
+    // 7. Bold: **text** or <b>text</b>
+    else if (
+      (fullMatch.startsWith('**') && fullMatch.endsWith('**')) ||
+      (fullMatch.startsWith('<b>') && fullMatch.endsWith('</b>'))
+    ) {
+      const inner = fullMatch.startsWith('**') ? fullMatch.slice(2, -2) : fullMatch.slice(3, -4);
       parts.push(
         <strong key={key} className="font-bold text-neutral-950">
-          {renderInlineFormatting(fullMatch.slice(2, -2))}
+          {renderInlineFormatting(inner)}
         </strong>
       );
     }
-    // 8. Italic: *text*
-    else if (fullMatch.startsWith('*') && fullMatch.endsWith('*')) {
+    // 8. Italic: *text* or <i>text</i>
+    else if (
+      (fullMatch.startsWith('*') && fullMatch.endsWith('*')) ||
+      (fullMatch.startsWith('<i>') && fullMatch.endsWith('</i>'))
+    ) {
+      const inner = fullMatch.startsWith('*') ? fullMatch.slice(1, -1) : fullMatch.slice(3, -4);
       parts.push(
         <em key={key} className="italic font-serif">
-          {renderInlineFormatting(fullMatch.slice(1, -1))}
+          {renderInlineFormatting(inner)}
         </em>
       );
     }
-    // 9. Strikethrough: ~~text~~
-    else if (fullMatch.startsWith('~~') && fullMatch.endsWith('~~')) {
+    // 9. Strikethrough: ~~text~~ or <s>text</s>
+    else if (
+      (fullMatch.startsWith('~~') && fullMatch.endsWith('~~')) ||
+      (fullMatch.startsWith('<s>') && fullMatch.endsWith('</s>'))
+    ) {
+      const inner = fullMatch.startsWith('~~') ? fullMatch.slice(2, -2) : fullMatch.slice(3, -4);
       parts.push(
         <s key={key} className="line-through text-neutral-500">
-          {renderInlineFormatting(fullMatch.slice(2, -2))}
+          {renderInlineFormatting(inner)}
         </s>
       );
     }
-    // 10. Underline: <u>text</u>
-    else if (fullMatch.startsWith('<u>') && fullMatch.endsWith('</u>')) {
+    // 10. Underline: <u>text</u> or [u]text[/u]
+    else if (
+      (fullMatch.startsWith('<u>') && fullMatch.endsWith('</u>')) ||
+      (fullMatch.startsWith('[u]') && fullMatch.endsWith('[/u]'))
+    ) {
+      const inner = fullMatch.startsWith('<u>') ? fullMatch.slice(3, -4) : fullMatch.slice(3, -4);
       parts.push(
         <u key={key} className="underline underline-offset-4 decoration-neutral-500">
-          {renderInlineFormatting(fullMatch.slice(3, -4))}
+          {renderInlineFormatting(inner)}
         </u>
       );
     }
@@ -223,7 +240,7 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
       parts.push(
         <code
           key={key}
-          className="font-mono text-[0.85em] bg-neutral-100 text-neutral-800 border border-neutral-200 rounded px-1.5 py-0.5"
+          className="font-mono text-[0.88em] bg-neutral-100 text-neutral-900 border border-neutral-200 rounded px-1.5 py-0.5"
         >
           {fullMatch.slice(1, -1)}
         </code>
@@ -242,7 +259,7 @@ export const renderInlineFormatting = (text: string): React.ReactNode => {
   return parts.length > 0 ? parts : text;
 };
 
-// Типи блоків документа
+// Типи розпізнаних блоків статті
 type ParsedBlock =
   | { type: 'youtube'; videoId: string; url: string }
   | { type: 'image'; src: string; caption?: string }
@@ -260,109 +277,106 @@ type ParsedBlock =
   | { type: 'divider' }
   | { type: 'paragraph'; text: string; align?: 'left' | 'center' | 'right' };
 
-export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => {
-  const [lightboxImg, setLightboxImg] = useState<{ src: string; caption?: string } | null>(null);
+// Надійний аналізатор тексту на блоки (Block Parser)
+export function parseContentToBlocks(content: string): ParsedBlock[] {
+  if (!content) return [];
 
-  if (!content) return null;
-
-  // Розбиваємо весь текст на секції/абзаци
-  const rawSections = content.split(/\n\s*\n/);
+  const normalized = content.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
   const blocks: ParsedBlock[] = [];
 
-  for (const rawSec of rawSections) {
-    const trimmed = rawSec.trim();
-    if (!trimmed) continue;
+  let i = 0;
 
-    // 1. Розділювач: ---
-    if (/^---{1,}$/.test(trimmed)) {
-      blocks.push({ type: 'divider' });
+  while (i < lines.length) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
+
+    // Пропуск порожніх рядків
+    if (!line) {
+      i++;
       continue;
     }
 
-    // 2. YouTube тег або URL: [video: URL] або [youtube: URL]
-    const videoTagMatch = trimmed.match(/^\[(?:video|youtube):\s*(https?:\/\/[^\s\]]+)\]$/i);
-    if (videoTagMatch) {
-      const vid = getYouTubeId(videoTagMatch[1]);
-      if (vid) {
-        blocks.push({ type: 'youtube', videoId: vid, url: videoTagMatch[1] });
+    // 1. Розділювач: --- або ***
+    if (/^---{1,}$/.test(line) || /^\*\*\*{1,}$/.test(line)) {
+      blocks.push({ type: 'divider' });
+      i++;
+      continue;
+    }
+
+    // 2. Callout блок: [callout:variant title="..."] ... [/callout]
+    const calloutStartMatch = line.match(
+      /^\[callout:(info|warning|success|danger|quote|dark)(?:\s+title="(.*?)")?\]/i
+    );
+    if (calloutStartMatch) {
+      const variant = calloutStartMatch[1].toLowerCase() as any;
+      const title = calloutStartMatch[2] || undefined;
+      const calloutLines: string[] = [];
+
+      // Залишок поточного рядка після відкриваючого тегу
+      const startTagLength = calloutStartMatch[0].length;
+      let restOfLine = line.substring(startTagLength);
+
+      // Якщо закриваючий тег на тому ж рядку
+      if (restOfLine.includes('[/callout]')) {
+        const contentInside = restOfLine.replace('[/callout]', '').trim();
+        blocks.push({
+          type: 'callout',
+          variant,
+          title,
+          content: contentInside,
+        });
+        i++;
         continue;
       }
-    }
 
-    // 3. YouTube як окремий URL
-    const singleYtId = getYouTubeId(trimmed);
-    if (
-      singleYtId &&
-      (trimmed.startsWith('http://') || trimmed.startsWith('https://')) &&
-      !trimmed.includes(' ') &&
-      !trimmed.includes('\n')
-    ) {
-      blocks.push({ type: 'youtube', videoId: singleYtId, url: trimmed });
-      continue;
-    }
+      if (restOfLine.trim()) {
+        calloutLines.push(restOfLine);
+      }
 
-    // 4. Markdown зображення: ![caption](src)
-    const mdImgMatch = trimmed.match(/^!\[(.*?)\]\((.*?)\)$/);
-    if (mdImgMatch) {
-      blocks.push({
-        type: 'image',
-        src: mdImgMatch[2],
-        caption: mdImgMatch[1] || undefined,
-      });
-      continue;
-    }
+      i++;
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        if (nextLine.includes('[/callout]')) {
+          const beforeClose = nextLine.split('[/callout]')[0];
+          if (beforeClose.trim()) calloutLines.push(beforeClose);
+          i++;
+          break;
+        }
+        calloutLines.push(nextLine);
+        i++;
+      }
 
-    // 5. Тег фото: [photo: URL "caption"]
-    const photoTagMatch = trimmed.match(
-      /^\[(?:photo|image|img):\s*([^\s\]]+)(?:\s+"(.*?)")?\]$/i
-    );
-    if (photoTagMatch) {
-      blocks.push({
-        type: 'image',
-        src: photoTagMatch[1],
-        caption: photoTagMatch[2] || undefined,
-      });
-      continue;
-    }
-
-    // 6. Окреме посилання на зображення без тегів
-    if (isImageUrl(trimmed) && !trimmed.includes(' ') && !trimmed.includes('\n')) {
-      blocks.push({ type: 'image', src: trimmed });
-      continue;
-    }
-
-    // 7. Callout блок: [callout:variant title="..."]content[/callout]
-    const calloutMatch = trimmed.match(
-      /^\[callout:(info|warning|success|danger|quote|dark)(?:\s+title="(.*?)")?\]([\s\S]*?)\[\/callout\]$/i
-    );
-    if (calloutMatch) {
       blocks.push({
         type: 'callout',
-        variant: calloutMatch[1].toLowerCase() as any,
-        title: calloutMatch[2] || undefined,
-        content: calloutMatch[3].trim(),
+        variant,
+        title,
+        content: calloutLines.join('\n').trim(),
       });
       continue;
     }
 
-    // 8. Markdown таблиця:
-    // | H1 | H2 |
-    // |---|---|
-    // | R1 | R2 |
-    if (trimmed.startsWith('|') && trimmed.includes('\n') && trimmed.includes('|---|')) {
-      const tableLines = trimmed
-        .split('\n')
-        .map((l) => l.trim())
-        .filter((l) => l.startsWith('|') && l.endsWith('|'));
+    // 3. Markdown Таблиця: починається з | і наступний рядок містить |---|
+    if (
+      line.startsWith('|') &&
+      i + 1 < lines.length &&
+      lines[i + 1].trim().startsWith('|') &&
+      lines[i + 1].includes('---')
+    ) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        tableLines.push(lines[i].trim());
+        i++;
+      }
+
       if (tableLines.length >= 2) {
-        const parseRow = (line: string) =>
-          line
-            .slice(1, -1)
-            .split('|')
-            .map((c) => c.trim());
+        const parseRow = (r: string) => {
+          const trimmedRow = r.replace(/^\|/, '').replace(/\|$/, '');
+          return trimmedRow.split('|').map((c) => c.trim());
+        };
 
         const headers = parseRow(tableLines[0]);
-        // Рядок 1 — роздільник (|---|---|), пропускаємо його
+        // tableLines[1] — рядок роздільника |---|---|
         const dataRows = tableLines.slice(2).map(parseRow);
 
         blocks.push({
@@ -374,86 +388,185 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
       }
     }
 
-    // 9. Заголовки H1 (## ), H2 (### ), H3 (#### )
-    const h1Match = trimmed.match(/^##\s+(.+)$/);
+    // 4. Заголовки: # H1, ## H1, ### H2, #### H3
+    const h1Match = line.match(/^#{1,2}\s+(.+)$/);
     if (h1Match) {
       blocks.push({ type: 'heading', level: 1, text: h1Match[1] });
+      i++;
       continue;
     }
-    const h2Match = trimmed.match(/^###\s+(.+)$/);
+    const h2Match = line.match(/^###\s+(.+)$/);
     if (h2Match) {
       blocks.push({ type: 'heading', level: 2, text: h2Match[1] });
+      i++;
       continue;
     }
-    const h3Match = trimmed.match(/^####\s+(.+)$/);
+    const h3Match = line.match(/^####\s+(.+)$/);
     if (h3Match) {
       blocks.push({ type: 'heading', level: 3, text: h3Match[1] });
+      i++;
       continue;
     }
 
-    // 10. Блок цитати: > text
-    if (trimmed.startsWith('>')) {
-      const quoteLines = trimmed
-        .split('\n')
-        .map((l) => l.replace(/^>\s?/, '').trim())
-        .join(' ');
-      blocks.push({ type: 'quote', text: quoteLines });
+    // 5. YouTube тег або URL: [video: URL], [youtube: URL], або окреме YouTube посилання
+    const videoTagMatch = line.match(/^\[(?:video|youtube):\s*(https?:\/\/[^\s\]]+)\]$/i);
+    if (videoTagMatch) {
+      const vid = getYouTubeId(videoTagMatch[1]);
+      if (vid) {
+        blocks.push({ type: 'youtube', videoId: vid, url: videoTagMatch[1] });
+        i++;
+        continue;
+      }
+    }
+
+    const singleYtId = getYouTubeId(line);
+    if (
+      singleYtId &&
+      (line.startsWith('http://') || line.startsWith('https://')) &&
+      !line.includes(' ')
+    ) {
+      blocks.push({ type: 'youtube', videoId: singleYtId, url: line });
+      i++;
       continue;
     }
 
-    // 11. Чек-лист (завдання): - [ ] чи - [x]
-    if (trimmed.startsWith('- [ ]') || trimmed.startsWith('- [x]')) {
-      const checkItems = trimmed.split('\n').map((line) => {
-        const isChecked = line.startsWith('- [x]');
-        const itemText = line.replace(/^- \[[ x]\]\s*/, '').trim();
-        return { checked: isChecked, text: itemText };
+    // 6. Зображення Markdown: ![caption](src)
+    const mdImgMatch = line.match(/^!\[(.*?)\]\((.*?)\)$/);
+    if (mdImgMatch) {
+      blocks.push({
+        type: 'image',
+        src: mdImgMatch[2].trim(),
+        caption: mdImgMatch[1]?.trim() || undefined,
       });
+      i++;
+      continue;
+    }
+
+    // 7. Зображення тег: [photo: URL "caption"]
+    const photoTagMatch = line.match(
+      /^\[(?:photo|image|img):\s*([^\s\]]+)(?:\s+"(.*?)")?\]$/i
+    );
+    if (photoTagMatch) {
+      blocks.push({
+        type: 'image',
+        src: photoTagMatch[1].trim(),
+        caption: photoTagMatch[2]?.trim() || undefined,
+      });
+      i++;
+      continue;
+    }
+
+    // 8. Окреме зображення (URL або DataURL) без тегів
+    if (isImageUrl(line) && !line.includes(' ')) {
+      blocks.push({ type: 'image', src: line });
+      i++;
+      continue;
+    }
+
+    // 9. Блок цитати: > Текст
+    if (line.startsWith('>')) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i].trim().startsWith('>')) {
+        quoteLines.push(lines[i].trim().replace(/^>\s?/, ''));
+        i++;
+      }
+      blocks.push({ type: 'quote', text: quoteLines.join(' ') });
+      continue;
+    }
+
+    // 10. Чек-лист: - [ ] або - [x]
+    if (line.startsWith('- [ ]') || line.startsWith('- [x]')) {
+      const checkItems: { checked: boolean; text: string }[] = [];
+      while (
+        i < lines.length &&
+        (lines[i].trim().startsWith('- [ ]') || lines[i].trim().startsWith('- [x]'))
+      ) {
+        const cur = lines[i].trim();
+        const isChecked = cur.startsWith('- [x]');
+        const itemText = cur.replace(/^- \[[ x]\]\s*/, '').trim();
+        checkItems.push({ checked: isChecked, text: itemText });
+        i++;
+      }
       blocks.push({ type: 'checklist', items: checkItems });
       continue;
     }
 
-    // 12. Списки: маркований чи нумерований
-    const lines = trimmed.split('\n');
-    const isBulletList = lines.every((l) => /^[-*]\s+/.test(l.trim()));
-    const isNumberedList = lines.every((l) => /^\d+\.\s+/.test(l.trim()));
-
-    if (isBulletList && lines.length > 0) {
-      blocks.push({
-        type: 'list',
-        ordered: false,
-        items: lines.map((l) => l.replace(/^[-*]\s+/, '').trim()),
-      });
+    // 11. Марковані списки: - пункт або * пункт
+    if (/^[-*•]\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^[-*•]\s+/.test(lines[i].trim())) {
+        listItems.push(lines[i].trim().replace(/^[-*•]\s+/, '').trim());
+        i++;
+      }
+      blocks.push({ type: 'list', ordered: false, items: listItems });
       continue;
     }
 
-    if (isNumberedList && lines.length > 0) {
-      blocks.push({
-        type: 'list',
-        ordered: true,
-        items: lines.map((l) => l.replace(/^\d+\.\s+/, '').trim()),
-      });
+    // 12. Нумеровані списки: 1. пункт, 2. пункт
+    if (/^\d+\.\s+/.test(line)) {
+      const listItems: string[] = [];
+      while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+        listItems.push(lines[i].trim().replace(/^\d+\.\s+/, '').trim());
+        i++;
+      }
+      blocks.push({ type: 'list', ordered: true, items: listItems });
       continue;
     }
 
     // 13. Вирівнювання тексту: [align:center]...[/align]
-    const alignMatch = trimmed.match(/^\[align:(left|center|right)\]([\s\S]*?)\[\/align\]$/i);
+    const alignMatch = line.match(/^\[align:(left|center|right)\]([\s\S]*?)\[\/align\]$/i);
     if (alignMatch) {
       blocks.push({
         type: 'paragraph',
         align: alignMatch[1].toLowerCase() as any,
         text: alignMatch[2].trim(),
       });
+      i++;
       continue;
     }
 
-    // 14. Звичайний абзац (із підтримкою інлайн зображень / youtube всередині)
-    blocks.push({ type: 'paragraph', text: trimmed });
+    // 14. Звичайний текстовий абзац (збираємо рядки до наступного порожнього або спецблоку)
+    const paraLines: string[] = [rawLine];
+    i++;
+    while (
+      i < lines.length &&
+      lines[i].trim() &&
+      !lines[i].trim().startsWith('#') &&
+      !lines[i].trim().startsWith('---') &&
+      !lines[i].trim().startsWith('>') &&
+      !lines[i].trim().startsWith('|') &&
+      !lines[i].trim().startsWith('- [') &&
+      !/^[-*•]\s+/.test(lines[i].trim()) &&
+      !/^\d+\.\s+/.test(lines[i].trim()) &&
+      !lines[i].trim().startsWith('[callout:') &&
+      !lines[i].trim().startsWith('![') &&
+      !lines[i].trim().startsWith('[video:') &&
+      !lines[i].trim().startsWith('[photo:')
+    ) {
+      paraLines.push(lines[i]);
+      i++;
+    }
+
+    blocks.push({
+      type: 'paragraph',
+      text: paraLines.join('\n').trim(),
+    });
   }
+
+  return blocks;
+}
+
+export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => {
+  const [lightboxImg, setLightboxImg] = useState<{ src: string; caption?: string } | null>(null);
+
+  if (!content) return null;
+
+  const blocks = parseContentToBlocks(content);
 
   return (
     <div className="space-y-6 text-neutral-800 leading-relaxed font-serif text-base sm:text-lg">
       {blocks.map((block, idx) => {
-        // Заголовок
+        // 1. Заголовок
         if (block.type === 'heading') {
           if (block.level === 1) {
             return (
@@ -485,7 +598,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Розділювач
+        // 2. Розділювач
         if (block.type === 'divider') {
           return (
             <div key={idx} className="my-8 flex items-center justify-center gap-2">
@@ -496,7 +609,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // YouTube
+        // 3. YouTube
         if (block.type === 'youtube') {
           return (
             <figure key={idx} className="my-8 sm:my-10 not-italic">
@@ -514,7 +627,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Фото / Зображення
+        // 4. Фото / Зображення
         if (block.type === 'image') {
           return (
             <figure key={idx} className="my-8 sm:my-10 not-italic">
@@ -545,19 +658,19 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Таблиця
+        // 5. Таблиця
         if (block.type === 'table') {
           return (
             <div key={idx} className="my-8 overflow-x-auto not-italic">
               <div className="inline-block min-w-full align-middle border border-neutral-200 rounded-lg overflow-hidden shadow-xs">
                 <table className="min-w-full divide-y divide-neutral-200 font-sans text-sm">
-                  <thead className="bg-neutral-50">
+                  <thead className="bg-neutral-100/80">
                     <tr>
                       {block.headers.map((h, hIdx) => (
                         <th
                           key={hIdx}
                           scope="col"
-                          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-800"
+                          className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-neutral-900 border-r border-neutral-200 last:border-r-0"
                         >
                           {renderInlineFormatting(h)}
                         </th>
@@ -568,12 +681,12 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
                     {block.rows.map((row, rIdx) => (
                       <tr
                         key={rIdx}
-                        className={rIdx % 2 === 0 ? 'bg-white hover:bg-neutral-50/70' : 'bg-neutral-50/40 hover:bg-neutral-50/70'}
+                        className={rIdx % 2 === 0 ? 'bg-white hover:bg-neutral-50' : 'bg-neutral-50/50 hover:bg-neutral-100/70'}
                       >
                         {row.map((cell, cIdx) => (
                           <td
                             key={cIdx}
-                            className="px-4 py-3 text-neutral-700 leading-normal"
+                            className="px-4 py-3 text-neutral-800 leading-normal border-r border-neutral-200 last:border-r-0"
                           >
                             {renderInlineFormatting(cell)}
                           </td>
@@ -587,53 +700,47 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Кольоровий Callout блок
+        // 6. Кольоровий Callout блок
         if (block.type === 'callout') {
           const styles: Record<
             typeof block.variant,
-            { bg: string; border: string; text: string; icon: React.ReactNode; defaultTitle: string }
+            { bg: string; border: string; text: string; icon: React.ReactNode }
           > = {
             info: {
-              bg: 'bg-sky-50/80',
-              border: 'border-sky-300',
+              bg: 'bg-sky-50/90',
+              border: 'border-sky-400',
               text: 'text-sky-950',
               icon: <Info className="w-5 h-5 text-sky-600 shrink-0 mt-0.5" />,
-              defaultTitle: 'До відома',
             },
             warning: {
-              bg: 'bg-amber-50/80',
-              border: 'border-amber-300',
+              bg: 'bg-amber-50/90',
+              border: 'border-amber-400',
               text: 'text-amber-950',
               icon: <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />,
-              defaultTitle: 'Зверніть увагу',
             },
             success: {
-              bg: 'bg-emerald-50/80',
-              border: 'border-emerald-300',
+              bg: 'bg-emerald-50/90',
+              border: 'border-emerald-400',
               text: 'text-emerald-950',
               icon: <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />,
-              defaultTitle: 'Висновок',
             },
             danger: {
-              bg: 'bg-red-50/80',
-              border: 'border-red-300',
+              bg: 'bg-red-50/90',
+              border: 'border-red-400',
               text: 'text-red-950',
               icon: <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />,
-              defaultTitle: 'Важливо',
             },
             quote: {
               bg: 'bg-neutral-50',
-              border: 'border-neutral-300',
+              border: 'border-neutral-400',
               text: 'text-neutral-900',
               icon: <QuoteIcon className="w-5 h-5 text-neutral-500 shrink-0 mt-0.5" />,
-              defaultTitle: 'Цитата',
             },
             dark: {
               bg: 'bg-neutral-900',
               border: 'border-neutral-950',
               text: 'text-neutral-100',
               icon: <Info className="w-5 h-5 text-neutral-300 shrink-0 mt-0.5" />,
-              defaultTitle: 'Коментар',
             },
           };
 
@@ -642,7 +749,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           return (
             <div
               key={idx}
-              className={`my-7 p-5 rounded-lg border-l-4 ${cur.border} ${cur.bg} ${cur.text} shadow-xs`}
+              className={`my-7 p-5 rounded-lg border-l-4 ${cur.border} ${cur.bg} ${cur.text} shadow-xs not-italic`}
             >
               <div className="flex items-start gap-3">
                 {cur.icon}
@@ -652,19 +759,21 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
                       {block.title}
                     </div>
                   )}
-                  <div className="leading-relaxed">{renderInlineFormatting(block.content)}</div>
+                  <div className="leading-relaxed whitespace-pre-line">
+                    {renderInlineFormatting(block.content)}
+                  </div>
                 </div>
               </div>
             </div>
           );
         }
 
-        // Цитата
+        // 7. Цитата
         if (block.type === 'quote') {
           return (
             <blockquote
               key={idx}
-              className="my-8 pl-5 sm:pl-7 border-l-2 border-black italic text-neutral-900 font-serif text-lg sm:text-xl leading-relaxed"
+              className="my-8 pl-5 sm:pl-7 border-l-3 border-black italic text-neutral-900 font-serif text-lg sm:text-xl leading-relaxed"
             >
               <p>«{renderInlineFormatting(block.text)}»</p>
               {block.author && (
@@ -676,7 +785,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Списки
+        // 8. Списки
         if (block.type === 'list') {
           if (block.ordered) {
             return (
@@ -700,7 +809,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Чек-лист (завдання)
+        // 9. Чек-лист (завдання)
         if (block.type === 'checklist') {
           return (
             <div key={idx} className="my-5 space-y-2 font-sans text-sm sm:text-base">
@@ -726,7 +835,7 @@ export const ContentRenderer: React.FC<ContentRendererProps> = ({ content }) => 
           );
         }
 
-        // Звичайний абзац
+        // 10. Звичайний абзац
         const alignClass =
           block.align === 'center'
             ? 'text-center'

@@ -62,13 +62,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   // Вкладка перегляду контенту: 'edit' або 'preview'
   const [editorTab, setEditorTab] = useState<'edit' | 'preview'>('edit');
 
-  // Модальне вікно вставки фото або YouTube
-  const [mediaDialog, setMediaDialog] = useState<{
-    type: 'photo' | 'youtube';
-    url: string;
-    caption: string;
-  } | null>(null);
-
   const coverFileInputRef = React.useRef<HTMLInputElement>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
@@ -236,45 +229,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleInsertMedia = () => {
-    if (!mediaDialog || !mediaDialog.url.trim()) {
-      setMediaDialog(null);
-      return;
-    }
-
-    const trimmedUrl = mediaDialog.url.trim();
-    let snippet = '';
-
-    if (mediaDialog.type === 'youtube') {
-      snippet = `\n\n${trimmedUrl}\n\n`;
-    } else {
-      if (mediaDialog.caption.trim()) {
-        snippet = `\n\n![${mediaDialog.caption.trim()}](${trimmedUrl})\n\n`;
-      } else {
-        snippet = `\n\n${trimmedUrl}\n\n`;
-      }
-    }
-
-    if (formLangTab === 'ua') {
-      setEditingArticle((prev) => ({
-        ...prev,
-        content: (prev?.content || '').trimEnd() + snippet,
-      }));
-    } else {
-      setEditingArticle((prev) => ({
-        ...prev,
-        contentEn: (prev?.contentEn || '').trimEnd() + snippet,
-      }));
-    }
-
-    showNotification(
-      mediaDialog.type === 'youtube'
-        ? 'Посилання на YouTube додано до тексту'
-        : 'Посилання на фото додано до тексту'
-    );
-    setMediaDialog(null);
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingArticle || !editingArticle.title?.trim()) {
@@ -389,93 +343,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
         <div className="fixed bottom-6 right-6 z-50 bg-black text-white text-xs sm:text-sm px-4 py-3 rounded shadow-lg flex items-center gap-2 animate-fade-in">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{notification}</span>
-        </div>
-      )}
-
-      {/* Діалог швидкої вставки посилання на Фото або YouTube */}
-      {mediaDialog && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 border border-neutral-200 animate-scale-up">
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-              <div className="flex items-center gap-2">
-                {mediaDialog.type === 'youtube' ? (
-                  <VideoIcon className="w-5 h-5 text-red-600" />
-                ) : (
-                  <ImageIcon className="w-5 h-5 text-neutral-700" />
-                )}
-                <h3 className="text-sm font-medium text-black">
-                  {mediaDialog.type === 'youtube'
-                    ? 'Вставити відео з YouTube'
-                    : 'Вставити фото у статтю'}
-                </h3>
-              </div>
-              <button
-                onClick={() => setMediaDialog(null)}
-                className="text-neutral-400 hover:text-black cursor-pointer p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-left">
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                  {mediaDialog.type === 'youtube' ? 'Посилання на YouTube відео *' : 'Посилання на фото (URL) *'}
-                </label>
-                <input
-                  type="url"
-                  autoFocus
-                  placeholder={
-                    mediaDialog.type === 'youtube'
-                      ? 'https://www.youtube.com/watch?v=... або https://youtu.be/...'
-                      : 'https://images.unsplash.com/... або https://...jpg'
-                  }
-                  value={mediaDialog.url}
-                  onChange={(e) => setMediaDialog({ ...mediaDialog, url: e.target.value })}
-                  className="w-full text-sm border border-neutral-200 rounded p-2.5 focus:border-black focus:outline-none font-sans"
-                />
-              </div>
-
-              {mediaDialog.type === 'photo' && (
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                    Підпис до фото (необов'язково)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Короткий підпис або автор фото"
-                    value={mediaDialog.caption}
-                    onChange={(e) => setMediaDialog({ ...mediaDialog, caption: e.target.value })}
-                    className="w-full text-sm border border-neutral-200 rounded p-2.5 focus:border-black focus:outline-none font-sans"
-                  />
-                </div>
-              )}
-
-              <p className="text-xs text-neutral-500 bg-neutral-50 p-2.5 rounded">
-                {mediaDialog.type === 'youtube'
-                  ? 'Відео буде вбудовано на всю ширину тексту зі зручним плеєром.'
-                  : 'Зображення відобразиться у високій якості на всю ширину сторінки.'}
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setMediaDialog(null)}
-                  className="px-4 py-2 text-xs text-neutral-600 hover:text-black cursor-pointer"
-                >
-                  Скасувати
-                </button>
-                <button
-                  type="button"
-                  disabled={!mediaDialog.url.trim()}
-                  onClick={handleInsertMedia}
-                  className="px-4 py-2 bg-black text-white text-xs rounded hover:bg-neutral-800 disabled:opacity-50 cursor-pointer"
-                >
-                  Вставити у текст ({formLangTab === 'ua' ? 'UA' : 'EN'})
-                </button>
-              </div>
-            </div>
-          </div>
         </div>
       )}
 

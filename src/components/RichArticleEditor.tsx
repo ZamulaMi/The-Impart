@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Bold,
   Italic,
   Underline,
   Strikethrough,
   Code,
-  Eye,
   EyeOff,
   Link as LinkIcon,
   Table as TableIcon,
@@ -22,16 +22,10 @@ import {
   List,
   ListOrdered,
   CheckSquare,
-  AlignLeft,
-  AlignCenter,
-  AlignRight,
   Minus,
   Upload,
   ChevronDown,
   Columns,
-  Maximize2,
-  Sparkles,
-  HelpCircle,
   X,
   Check,
 } from 'lucide-react';
@@ -50,24 +44,25 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   onChange,
   placeholder = 'Напишіть текст статті тут...',
   lang = 'ua',
-  minHeight = '360px',
+  minHeight = '420px',
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const savedSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
 
   const [viewMode, setViewMode] = useState<'edit' | 'split' | 'preview'>('edit');
   const [activeDropdown, setActiveDropdown] = useState<
-    'heading' | 'highlight' | 'color' | 'font' | 'callout' | 'align' | null
+    'heading' | 'highlight' | 'color' | 'font' | 'callout' | null
   >(null);
 
-  // Діалогові вікна
+  // Діалогові модальні вікна
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [linkText, setLinkText] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
 
   const [showTableModal, setShowTableModal] = useState(false);
   const [tableCols, setTableCols] = useState(3);
-  const [tableRows, setTableRows] = useState(2);
+  const [tableRows, setTableRows] = useState(3);
   const [tableHeaders, setTableHeaders] = useState(['Колонка 1', 'Колонка 2', 'Колонка 3']);
 
   const [showImageModal, setShowImageModal] = useState(false);
@@ -80,7 +75,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
 
-  // Закриття випадаючих списків при кліку назовні
+  // Закриття випадаючих списків при кліку поза ними
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -92,7 +87,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Оновлення кількості колонок у модалці таблиці
+  // Оновлення кількості заголовків при зміні кількості стовпців таблиці
   useEffect(() => {
     setTableHeaders((prev) => {
       const updated = [...prev];
@@ -103,19 +98,38 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     });
   }, [tableCols]);
 
+  // Збереження виділення
+  const updateSelection = () => {
+    if (textareaRef.current) {
+      savedSelectionRef.current = {
+        start: textareaRef.current.selectionStart,
+        end: textareaRef.current.selectionEnd,
+      };
+    }
+  };
+
   // Підрахунок слів та орієнтовного часу читання
   const wordsCount = value.trim() ? value.trim().split(/\s+/).length : 0;
   const charsCount = value.length;
   const readTimeMinutes = Math.max(1, Math.ceil(wordsCount / 180));
 
-  // Допоміжна функція для вставки тексту на місце курсора або виділення
+  // Універсальна вставка тексту/обгортання виділеного тексту
   const insertText = (before: string, after: string = '', defaultInner: string = '') => {
     const textarea = textareaRef.current;
-    if (!textarea) return;
+    const currentVal = value;
 
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const currentVal = textarea.value;
+    let start = textarea ? textarea.selectionStart : savedSelectionRef.current.start;
+    let end = textarea ? textarea.selectionEnd : savedSelectionRef.current.end;
+
+    // Якщо курсор за межами
+    if (start < 0 || start > currentVal.length) start = currentVal.length;
+    if (end < 0 || end > currentVal.length) end = currentVal.length;
+    if (start > end) {
+      const tmp = start;
+      start = end;
+      end = tmp;
+    }
+
     const selectedText = currentVal.substring(start, end);
     const replacement = selectedText ? selectedText : defaultInner;
 
@@ -128,45 +142,88 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
     onChange(newVal);
 
+    savedSelectionRef.current = {
+      start: start + before.length,
+      end: start + before.length + replacement.length,
+    };
+
     setTimeout(() => {
-      textarea.focus();
-      const newCursorPos = start + before.length + replacement.length;
-      textarea.setSelectionRange(
-        start + before.length,
-        newCursorPos
-      );
-    }, 10);
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(
+          start + before.length,
+          start + before.length + replacement.length
+        );
+      }
+    }, 20);
   };
 
-  // Вставка на початку рядка (для списків і заголовків)
+  // Вставка на початку поточного рядка (для заголовків та списків)
   const insertAtLineStart = (prefix: string) => {
     const textarea = textareaRef.current;
-    if (!textarea) return;
+    const currentVal = value;
 
-    const start = textarea.selectionStart;
-    const currentVal = textarea.value;
+    let start = textarea ? textarea.selectionStart : savedSelectionRef.current.start;
+    if (start < 0 || start > currentVal.length) start = currentVal.length;
 
     // Знаходимо початок поточного рядка
     const lineStart = currentVal.lastIndexOf('\n', start - 1) + 1;
     const beforeLine = currentVal.substring(0, lineStart);
     const afterLine = currentVal.substring(lineStart);
 
-    // Якщо рядок вже має цей префікс — видаляємо його (toggle)
+    // Якщо рядок вже починається з цього префіксу — видаляємо його
+    let newVal: string;
+    let newCursorPos: number;
+
     if (afterLine.startsWith(prefix)) {
-      const newVal = beforeLine + afterLine.substring(prefix.length);
-      onChange(newVal);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start - prefix.length, start - prefix.length);
-      }, 10);
+      newVal = beforeLine + afterLine.substring(prefix.length);
+      newCursorPos = Math.max(lineStart, start - prefix.length);
     } else {
-      const newVal = beforeLine + prefix + afterLine;
-      onChange(newVal);
-      setTimeout(() => {
-        textarea.focus();
-        textarea.setSelectionRange(start + prefix.length, start + prefix.length);
-      }, 10);
+      newVal = beforeLine + prefix + afterLine;
+      newCursorPos = start + prefix.length;
     }
+
+    onChange(newVal);
+    savedSelectionRef.current = { start: newCursorPos, end: newCursorPos };
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
+      }
+    }, 20);
+  };
+
+  // Вставка великого окремого блоку (таблиця, зображення, callout, відео)
+  const insertBlock = (snippet: string) => {
+    const currentVal = value;
+    let pos = textareaRef.current
+      ? textareaRef.current.selectionStart
+      : savedSelectionRef.current.start;
+
+    if (pos < 0 || pos > currentVal.length) pos = currentVal.length;
+
+    const before = currentVal.substring(0, pos);
+    const after = currentVal.substring(pos);
+
+    // Переконуємось, що перед і після блоку є чистий новий рядок
+    const needLeadingNewline = before.length > 0 && !before.endsWith('\n\n') ? (before.endsWith('\n') ? '\n' : '\n\n') : '';
+    const needTrailingNewline = after.length > 0 && !after.startsWith('\n\n') ? (after.startsWith('\n') ? '\n' : '\n\n') : '';
+
+    const insertion = needLeadingNewline + snippet.trim() + needTrailingNewline;
+    const newVal = before + insertion + after;
+
+    onChange(newVal);
+
+    const newPos = pos + insertion.length;
+    savedSelectionRef.current = { start: newPos, end: newPos };
+
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(newPos, newPos);
+      }
+    }, 20);
   };
 
   // Гарячі клавіші (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+K)
@@ -188,27 +245,31 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     }
   };
 
-  // Відкриття модалки посилання з автозаповненням виділеного тексту
+  // Відкриття модалки посилання
   const handleOpenLinkModal = () => {
+    updateSelection();
     const textarea = textareaRef.current;
     if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const selected = textarea.value.substring(start, end);
+      const selected = value.substring(textarea.selectionStart, textarea.selectionEnd);
       setLinkText(selected || '');
-      setLinkUrl('');
     }
+    setLinkUrl('');
     setShowLinkModal(true);
     setActiveDropdown(null);
   };
 
   // Застосування посилання
-  const handleApplyLink = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleApplyLink = () => {
     if (!linkUrl.trim()) return;
 
     let cleanUrl = linkUrl.trim();
-    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://') && !cleanUrl.startsWith('/') && !cleanUrl.startsWith('mailto:')) {
+    if (
+      !cleanUrl.startsWith('http://') &&
+      !cleanUrl.startsWith('https://') &&
+      !cleanUrl.startsWith('/') &&
+      !cleanUrl.startsWith('mailto:') &&
+      !cleanUrl.startsWith('tel:')
+    ) {
       cleanUrl = `https://${cleanUrl}`;
     }
 
@@ -218,8 +279,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   };
 
   // Вставка таблиці
-  const handleInsertTable = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleInsertTable = () => {
     const headersStr = `| ${tableHeaders.join(' | ')} |`;
     const separatorStr = `| ${tableHeaders.map(() => '---').join(' | ')} |`;
     const rowsArr: string[] = [];
@@ -229,12 +289,12 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
       rowsArr.push(`| ${cells.join(' | ')} |`);
     }
 
-    const tableMarkdown = `\n\n${headersStr}\n${separatorStr}\n${rowsArr.join('\n')}\n\n`;
-    insertText(tableMarkdown);
+    const tableMarkdown = `${headersStr}\n${separatorStr}\n${rowsArr.join('\n')}`;
+    insertBlock(tableMarkdown);
     setShowTableModal(false);
   };
 
-  // Оптимізація та конвертація завантаженого файлу зображення
+  // Завантаження файлу фотографії
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -243,7 +303,6 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
     setUploadError(null);
 
     try {
-      // Стискаємо зображення через HTML Canvas для оптимізації розміру
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -252,8 +311,6 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
             const canvas = document.createElement('canvas');
             let width = img.width;
             let height = img.height;
-
-            // Обмежуємо максимальну ширину 1600px
             const maxDim = 1600;
             if (width > maxDim || height > maxDim) {
               if (width > height) {
@@ -264,7 +321,6 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 height = maxDim;
               }
             }
-
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext('2d');
@@ -273,10 +329,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               return;
             }
             ctx.drawImage(img, 0, 0, width, height);
-
-            // Оптимізуємо в JPEG якість 0.85
-            const optimized = canvas.toDataURL('image/jpeg', 0.85);
-            resolve(optimized);
+            resolve(canvas.toDataURL('image/jpeg', 0.85));
           };
           img.onerror = () => reject(new Error('Не вдалося завантажити зображення'));
           img.src = event.target?.result as string;
@@ -285,7 +338,6 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
         reader.readAsDataURL(file);
       });
 
-      // Спроба відправити на серверний ендпоінт для збереження на сервері
       let finalUrl = dataUrl;
       try {
         const res = await fetch('/api/upload', {
@@ -303,7 +355,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           }
         }
       } catch {
-        // Якщо сервер недоступний — dataUrl все одно збережеться в статті та базі даних
+        // Якщо серверний маршрут недоступний, dataUrl збережеться в статті
       }
 
       setImageUrl(finalUrl);
@@ -315,13 +367,12 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   };
 
   // Застосування вставки фото
-  const handleApplyImage = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleApplyImage = () => {
     if (!imageUrl.trim()) return;
 
     const cap = imageCaption.trim();
-    const snippet = cap ? `\n\n![${cap}](${imageUrl.trim()})\n\n` : `\n\n![](${imageUrl.trim()})\n\n`;
-    insertText(snippet);
+    const snippet = cap ? `![${cap}](${imageUrl.trim()})` : `![](${imageUrl.trim()})`;
+    insertBlock(snippet);
     setShowImageModal(false);
     setImageUrl('');
     setImageCaption('');
@@ -329,10 +380,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   };
 
   // Вставка YouTube
-  const handleApplyVideo = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleApplyVideo = () => {
     if (!videoUrl.trim()) return;
-    insertText(`\n\n[video: ${videoUrl.trim()}]\n\n`);
+    insertBlock(`[video: ${videoUrl.trim()}]`);
     setShowVideoModal(false);
     setVideoUrl('');
   };
@@ -340,12 +390,13 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
   return (
     <div className="border border-neutral-300 rounded-lg overflow-hidden bg-white shadow-xs focus-within:border-black transition-colors">
       {/* ПАНЕЛЬ ІНСТРУМЕНТІВ (TOOLBAR) */}
-      <div className="bg-neutral-50/90 border-b border-neutral-200 p-2 sm:p-2.5 flex flex-wrap items-center justify-between gap-1.5 select-none text-neutral-700">
+      <div className="bg-neutral-50/95 border-b border-neutral-200 p-2 sm:p-2.5 flex flex-wrap items-center justify-between gap-1.5 select-none text-neutral-700 sticky top-0 z-20">
         <div className="flex flex-wrap items-center gap-1">
           {/* 1. РОЗМІР ТЕКСТУ (ЗАГОЛОВКИ) */}
           <div className="relative editor-dropdown-container">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveDropdown(activeDropdown === 'heading' ? null : 'heading')}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-800 bg-white border border-neutral-200 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
               title="Розмір тексту (Заголовки)"
@@ -355,9 +406,10 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
             </button>
 
             {activeDropdown === 'heading' && (
-              <div className="absolute top-full left-0 mt-1 z-30 w-44 bg-white border border-neutral-200 rounded-md shadow-lg py-1 animate-fade-in">
+              <div className="absolute top-full left-0 mt-1 z-30 w-48 bg-white border border-neutral-200 rounded-md shadow-lg py-1 animate-fade-in">
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertAtLineStart('## ');
                     setActiveDropdown(null);
@@ -369,6 +421,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertAtLineStart('### ');
                     setActiveDropdown(null);
@@ -380,6 +433,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertAtLineStart('#### ');
                     setActiveDropdown(null);
@@ -395,9 +449,10 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <div className="h-4 w-px bg-neutral-200 mx-0.5" />
 
-          {/* 2. БАЗОВЕ ФОРМАТУВАННЯ ТЕКСТУ (B, I, U, S, Code, Spoiler) */}
+          {/* 2. БАЗОВЕ ФОРМАТУВАННЯ (B, I, U, S, Code, Spoiler) */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertText('**', '**', 'жирний текст')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Жирний (Ctrl+B)"
@@ -407,6 +462,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertText('*', '*', 'курсив')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Курсив (Ctrl+I)"
@@ -416,7 +472,8 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => insertText('<u>', '</u>', 'підкреслений')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insertText('<u>', '</u>', 'підкреслений текст')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Підкреслений (Ctrl+U)"
           >
@@ -425,6 +482,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertText('~~', '~~', 'закреслений')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Закреслений"
@@ -434,6 +492,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertText('`', '`', 'код')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Моноширинний / Код"
@@ -441,11 +500,12 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
             <Code className="w-4 h-4" />
           </button>
 
-          {/* TELEGRAM SPOILER (Прихований текст) */}
+          {/* TELEGRAM SPOILER */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertText('||', '||', 'прихований текст')}
-            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-800 bg-neutral-200/60 hover:bg-neutral-300/80 rounded transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-neutral-800 bg-neutral-200/70 hover:bg-neutral-300 rounded transition-colors cursor-pointer"
             title="Прихований текст / Спойлер (як у Telegram)"
           >
             <EyeOff className="w-3.5 h-3.5 text-neutral-600" />
@@ -454,10 +514,11 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <div className="h-4 w-px bg-neutral-200 mx-0.5" />
 
-          {/* 3. ХАЙЛАЙТЕР (ВИДІЛЕННЯ МАРКЕРОМ) */}
+          {/* 3. ХАЙЛАЙТЕР (МАРКЕР) */}
           <div className="relative editor-dropdown-container">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveDropdown(activeDropdown === 'highlight' ? null : 'highlight')}
               className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer flex items-center gap-0.5"
               title="Виділення маркером (Хайлайтер)"
@@ -482,6 +543,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                   <button
                     key={color.id}
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       insertText(`[hl:${color.id}]`, `[/hl]`, 'виділений текст');
                       setActiveDropdown(null);
@@ -500,6 +562,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           <div className="relative editor-dropdown-container">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveDropdown(activeDropdown === 'color' ? null : 'color')}
               className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer flex items-center gap-0.5"
               title="Зміна кольору тексту"
@@ -524,6 +587,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                   <button
                     key={c.hex}
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
                       insertText(`[color:${c.hex}]`, `[/color]`, 'кольоровий текст');
                       setActiveDropdown(null);
@@ -544,6 +608,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           <div className="relative editor-dropdown-container">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveDropdown(activeDropdown === 'font' ? null : 'font')}
               className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer flex items-center gap-0.5"
               title="Вибір стилю шрифту"
@@ -556,6 +621,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               <div className="absolute top-full left-0 mt-1 z-30 w-48 bg-white border border-neutral-200 rounded-md shadow-lg p-1.5 animate-fade-in space-y-1">
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertText('[font:serif]', '[/font]', 'Текст шрифтом Serif');
                     setActiveDropdown(null);
@@ -566,6 +632,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertText('[font:sans]', '[/font]', 'Текст шрифтом Sans-serif');
                     setActiveDropdown(null);
@@ -576,6 +643,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
                     insertText('[font:mono]', '[/font]', 'Текст шрифтом Monospace');
                     setActiveDropdown(null);
@@ -590,9 +658,10 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <div className="h-4 w-px bg-neutral-200 mx-0.5" />
 
-          {/* 6. СПИСКИ ТА ВИРІВНЮВАННЯ */}
+          {/* 6. СПИСКИ ТА ЧЕК-ЛІСТИ */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertAtLineStart('- ')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Маркований список"
@@ -602,6 +671,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertAtLineStart('1. ')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Нумерований список"
@@ -611,6 +681,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={() => insertAtLineStart('- [ ] ')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Чек-лист (завдання)"
@@ -624,6 +695,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           <div className="relative editor-dropdown-container">
             <button
               type="button"
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveDropdown(activeDropdown === 'callout' ? null : 'callout')}
               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-800 bg-white border border-neutral-200 rounded hover:bg-neutral-100 transition-colors cursor-pointer"
               title="Кольорові блоки тексту та цитати"
@@ -637,8 +709,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
               <div className="absolute top-full left-0 mt-1 z-30 w-56 bg-white border border-neutral-200 rounded-md shadow-lg p-1.5 animate-fade-in space-y-1">
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('> ', '', 'Текст редакційної цитати...');
+                    insertBlock('> Текст редакційної цитати...');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs hover:bg-neutral-100 rounded text-left cursor-pointer"
@@ -648,8 +721,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('[callout:info title="До відома"]\n', '\n[/callout]', 'Важлива інформаційна довідка...');
+                    insertBlock('[callout:info title="До відома"]\nВажлива інформаційна довідка...\n[/callout]');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-sky-800 hover:bg-sky-50 rounded text-left cursor-pointer"
@@ -659,8 +733,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('[callout:warning title="Зверніть увагу"]\n', '\n[/callout]', 'Застереження або важлива примітка...');
+                    insertBlock('[callout:warning title="Зверніть увагу"]\nЗастереження або важлива примітка...\n[/callout]');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-amber-800 hover:bg-amber-50 rounded text-left cursor-pointer"
@@ -670,8 +745,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('[callout:success title="Висновок"]\n', '\n[/callout]', 'Ключовий висновок чи успіх...');
+                    insertBlock('[callout:success title="Висновок"]\nКлючовий висновок чи успіх...\n[/callout]');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-emerald-800 hover:bg-emerald-50 rounded text-left cursor-pointer"
@@ -681,8 +757,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('[callout:danger title="Важливо"]\n', '\n[/callout]', 'Термінова або критична інформація...');
+                    insertBlock('[callout:danger title="Важливо"]\nТермінова або критична інформація...\n[/callout]');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-red-800 hover:bg-red-50 rounded text-left cursor-pointer"
@@ -692,8 +769,9 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                 </button>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => {
-                    insertText('[callout:dark title="Коментар"]\n', '\n[/callout]', 'Стильний чорний блок...');
+                    insertBlock('[callout:dark title="Коментар"]\nСтильний чорний блок з білим текстом...\n[/callout]');
                     setActiveDropdown(null);
                   }}
                   className="w-full flex items-center gap-2 px-2.5 py-1.5 text-xs text-neutral-900 hover:bg-neutral-100 rounded text-left cursor-pointer"
@@ -710,6 +788,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           {/* 8. ВСТАВКА МЕДІА, ТАБЛИЦЬ, ПОСИЛАНЬ */}
           <button
             type="button"
+            onMouseDown={(e) => e.preventDefault()}
             onClick={handleOpenLinkModal}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Зробити виділений текст посиланням (Ctrl+K)"
@@ -719,7 +798,11 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => setShowTableModal(true)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              updateSelection();
+              setShowTableModal(true);
+            }}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Створити таблицю"
           >
@@ -728,16 +811,24 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => setShowImageModal(true)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              updateSelection();
+              setShowImageModal(true);
+            }}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
-            title="Вставити фото (завантажити файл або URL)"
+            title="Вставити фото (завантажити файл або вказати URL)"
           >
             <ImageIcon className="w-4 h-4 text-neutral-700" />
           </button>
 
           <button
             type="button"
-            onClick={() => setShowVideoModal(true)}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              updateSelection();
+              setShowVideoModal(true);
+            }}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Вставити YouTube відео"
           >
@@ -746,7 +837,8 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
           <button
             type="button"
-            onClick={() => insertText('\n\n---\n\n')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insertBlock('---')}
             className="p-1.5 text-neutral-700 hover:text-black hover:bg-neutral-200/70 rounded transition-colors cursor-pointer"
             title="Розділювач рядків"
           >
@@ -754,8 +846,8 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           </button>
         </div>
 
-        {/* ПЕРЕМИКАЧ РЕЖИМІВ (EDIT / SPLIT / PREVIEW) */}
-        <div className="flex items-center gap-1.5 border border-neutral-200 bg-white rounded p-0.5 shrink-0 ml-auto">
+        {/* ПЕРЕМИКАЧ РЕЖИМІВ (ТЕКСТ / ПАРАЛЕЛЬНО / ПРЕВ'Ю) */}
+        <div className="flex items-center gap-1 border border-neutral-200 bg-white rounded p-0.5 shrink-0 ml-auto">
           <button
             type="button"
             onClick={() => setViewMode('edit')}
@@ -800,7 +892,13 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              onChange(e.target.value);
+              updateSelection();
+            }}
+            onSelect={updateSelection}
+            onKeyUp={updateSelection}
+            onClick={updateSelection}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             style={{ minHeight }}
@@ -813,7 +911,13 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
+              onChange={(e) => {
+                onChange(e.target.value);
+                updateSelection();
+              }}
+              onSelect={updateSelection}
+              onKeyUp={updateSelection}
+              onClick={updateSelection}
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               style={{ minHeight }}
@@ -856,370 +960,429 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
         </div>
       </div>
 
-      {/* МОДАЛЬНЕ ВІКНО ПОСИЛАННЯ */}
-      {showLinkModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
+      {/* ========================================================================= */}
+      {/* МОДАЛЬНІ ВІКНА (ПОРТАЛ В DOCUMENT.BODY — ПОВНІСТЮ БЕЗ <FORM> ТА КОНФЛІКТІВ) */}
+      {/* ========================================================================= */}
+
+      {/* 1. МОДАЛЬНЕ ВІКНО ПОСИЛАННЯ */}
+      {showLinkModal &&
+        createPortal(
           <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 border border-neutral-200"
+            onClick={() => setShowLinkModal(false)}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
           >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
-                <LinkIcon className="w-4 h-4 text-blue-600" />
-                <span>Зробити текст посиланням</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowLinkModal(false)}
-                className="text-neutral-400 hover:text-black cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleApplyLink} className="space-y-4">
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                  Текст посилання (назва) *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="напр. Читайте детальніше в Telegram"
-                  value={linkText}
-                  onChange={(e) => setLinkText(e.target.value)}
-                  className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
-                  autoFocus
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                  URL адреса посилання *
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="https://t.me/the_impart або https://example.com"
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 border border-neutral-200"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
+                  <LinkIcon className="w-4 h-4 text-blue-600" />
+                  <span>Зробити текст посиланням</span>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowLinkModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  className="text-neutral-400 hover:text-black cursor-pointer"
                 >
-                  Скасувати
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors cursor-pointer"
-                >
-                  Вставити посилання
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* МОДАЛЬНЕ ВІКНО ТАБЛИЦІ */}
-      {showTableModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-neutral-200"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
-                <TableIcon className="w-4 h-4 text-emerald-600" />
-                <span>Конструктор таблиці</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowTableModal(false)}
-                className="text-neutral-400 hover:text-black cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleInsertTable} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-4">
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                    Кількість колонок
-                  </label>
-                  <select
-                    value={tableCols}
-                    onChange={(e) => setTableCols(Number(e.target.value))}
-                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
-                  >
-                    {[2, 3, 4, 5, 6].map((num) => (
-                      <option key={num} value={num}>
-                        {num} колонки
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                    Кількість рядків даних
-                  </label>
-                  <select
-                    value={tableRows}
-                    onChange={(e) => setTableRows(Number(e.target.value))}
-                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
-                  >
-                    {[1, 2, 3, 4, 5, 6, 8, 10].map((num) => (
-                      <option key={num} value={num}>
-                        {num} рядків
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                  Заголовки колонок таблиці
-                </label>
-                <div className="space-y-2">
-                  {tableHeaders.map((header, idx) => (
-                    <input
-                      key={idx}
-                      type="text"
-                      required
-                      placeholder={`Заголовок колонки ${idx + 1}`}
-                      value={header}
-                      onChange={(e) => {
-                        const updated = [...tableHeaders];
-                        updated[idx] = e.target.value;
-                        setTableHeaders(updated);
-                      }}
-                      className="w-full text-sm border border-neutral-300 rounded px-3 py-1.5 focus:border-black focus:outline-none"
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
-                <button
-                  type="button"
-                  onClick={() => setShowTableModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
-                >
-                  Скасувати
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors cursor-pointer"
-                >
-                  Вставити таблицю
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* МОДАЛЬНЕ ВІКНО ЗОБРАЖЕННЯ (UPLOAD + URL) */}
-      {showImageModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-neutral-200"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
-                <ImageIcon className="w-4 h-4 text-neutral-700" />
-                <span>Вставити зображення у статтю</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowImageModal(false)}
-                className="text-neutral-400 hover:text-black cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Вкладки: Завантажити файл або Посилання */}
-            <div className="flex items-center border-b border-neutral-200 mb-4">
-              <button
-                type="button"
-                onClick={() => setImageTab('upload')}
-                className={`flex-1 py-2 text-xs font-medium text-center border-b-2 transition-colors cursor-pointer ${
-                  imageTab === 'upload'
-                    ? 'border-black text-black font-semibold'
-                    : 'border-transparent text-neutral-500 hover:text-black'
-                }`}
-              >
-                Завантажити файл з комп'ютера
-              </button>
-              <button
-                type="button"
-                onClick={() => setImageTab('url')}
-                className={`flex-1 py-2 text-xs font-medium text-center border-b-2 transition-colors cursor-pointer ${
-                  imageTab === 'url'
-                    ? 'border-black text-black font-semibold'
-                    : 'border-transparent text-neutral-500 hover:text-black'
-                }`}
-              >
-                Вказати посилання (URL)
-              </button>
-            </div>
-
-            <form onSubmit={handleApplyImage} className="space-y-4">
-              {imageTab === 'upload' ? (
-                <div>
-                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                    Виберіть файл фотографії *
+                    Текст посилання (назва) *
                   </label>
                   <input
-                    type="file"
-                    ref={fileInputRef}
-                    accept="image/*"
-                    onChange={handleFileChange}
-                    className="hidden"
+                    type="text"
+                    placeholder="напр. Читайте детальніше в Telegram"
+                    value={linkText}
+                    onChange={(e) => setLinkText(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyLink();
+                      }
+                    }}
+                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
+                    autoFocus
                   />
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-neutral-300 hover:border-black rounded-lg p-6 text-center cursor-pointer transition-colors bg-neutral-50/50 hover:bg-neutral-50"
-                  >
-                    <Upload className="w-6 h-6 mx-auto text-neutral-400 mb-2" />
-                    <div className="text-xs font-medium text-neutral-800">
-                      {isUploading ? 'Обробка зображення...' : 'Натисніть або перетягніть файл сюди'}
-                    </div>
-                    <div className="text-[11px] text-neutral-400 mt-1">
-                      Підтримуються PNG, JPG, WEBP, GIF (зберігається на сервері)
-                    </div>
-                  </div>
-
-                  {uploadError && (
-                    <div className="text-xs text-red-600 mt-2">{uploadError}</div>
-                  )}
-
-                  {imageUrl && (
-                    <div className="mt-3 p-2 bg-neutral-100 rounded flex items-center gap-3">
-                      <img src={imageUrl} alt="Прев'ю" className="w-12 h-12 object-cover rounded border border-neutral-300" />
-                      <div className="text-xs text-neutral-700 truncate flex-1">
-                        ✓ Зображення готове до вставки
-                      </div>
-                    </div>
-                  )}
                 </div>
-              ) : (
+
                 <div>
                   <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                    URL посилання на зображення *
+                    URL адреса посилання *
                   </label>
                   <input
-                    type="url"
-                    required
-                    placeholder="https://images.unsplash.com/... або пряме посилання"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
+                    type="text"
+                    placeholder="https://t.me/the_impart або https://example.com"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyLink();
+                      }
+                    }}
                     className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
                   />
                 </div>
-              )}
 
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                  Підпис до зображення (необов'язково)
-                </label>
-                <input
-                  type="text"
-                  placeholder="напр. Фото: Reuters / Джерело"
-                  value={imageCaption}
-                  onChange={(e) => setImageCaption(e.target.value)}
-                  className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
-                />
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkModal(false)}
+                    className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyLink}
+                    disabled={!linkUrl.trim()}
+                    className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Вставити посилання
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* 2. МОДАЛЬНЕ ВІКНО ТАБЛИЦІ */}
+      {showTableModal &&
+        createPortal(
+          <div
+            onClick={() => setShowTableModal(false)}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 border border-neutral-200"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
+                  <TableIcon className="w-4 h-4 text-emerald-600" />
+                  <span>Конструктор таблиці</span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setShowTableModal(false)}
+                  className="text-neutral-400 hover:text-black cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      Кількість колонок
+                    </label>
+                    <select
+                      value={tableCols}
+                      onChange={(e) => setTableCols(Number(e.target.value))}
+                      className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
+                    >
+                      {[2, 3, 4, 5, 6].map((num) => (
+                        <option key={num} value={num}>
+                          {num} колонки
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      Кількість рядків даних
+                    </label>
+                    <select
+                      value={tableRows}
+                      onChange={(e) => setTableRows(Number(e.target.value))}
+                      className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
+                    >
+                      {[1, 2, 3, 4, 5, 6, 8, 10].map((num) => (
+                        <option key={num} value={num}>
+                          {num} рядків
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                    Заголовки стовпців таблиці
+                  </label>
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {tableHeaders.map((header, idx) => (
+                      <input
+                        key={idx}
+                        type="text"
+                        placeholder={`Заголовок колонки ${idx + 1}`}
+                        value={header}
+                        onChange={(e) => {
+                          const updated = [...tableHeaders];
+                          updated[idx] = e.target.value;
+                          setTableHeaders(updated);
+                        }}
+                        className="w-full text-sm border border-neutral-300 rounded px-3 py-1.5 focus:border-black focus:outline-none"
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowTableModal(false)}
+                    className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleInsertTable}
+                    className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors cursor-pointer"
+                  >
+                    Вставити таблицю
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* 3. МОДАЛЬНЕ ВІКНО ЗОБРАЖЕННЯ (UPLOAD + URL) */}
+      {showImageModal &&
+        createPortal(
+          <div
+            onClick={() => setShowImageModal(false)}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-lg shadow-2xl max-w-lg w-full p-6 border border-neutral-200"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-neutral-700" />
+                  <span>Вставити фото у статтю</span>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowImageModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  className="text-neutral-400 hover:text-black cursor-pointer"
                 >
-                  Скасувати
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Вкладки: Завантажити з файлу / За посиланням */}
+              <div className="flex items-center border-b border-neutral-200 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setImageTab('upload')}
+                  className={`flex-1 py-2 text-xs font-medium text-center border-b-2 transition-colors cursor-pointer ${
+                    imageTab === 'upload'
+                      ? 'border-black text-black font-semibold'
+                      : 'border-transparent text-neutral-500 hover:text-black'
+                  }`}
+                >
+                  Завантажити файл з комп'ютера
                 </button>
                 <button
-                  type="submit"
-                  disabled={!imageUrl || isUploading}
-                  className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
+                  type="button"
+                  onClick={() => setImageTab('url')}
+                  className={`flex-1 py-2 text-xs font-medium text-center border-b-2 transition-colors cursor-pointer ${
+                    imageTab === 'url'
+                      ? 'border-black text-black font-semibold'
+                      : 'border-transparent text-neutral-500 hover:text-black'
+                  }`}
                 >
-                  Вставити фото
+                  Вказати посилання (URL)
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* МОДАЛЬНЕ ВІКНО YOUTUBE */}
-      {showVideoModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6 border border-neutral-200"
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
-              <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
-                <VideoIcon className="w-4 h-4 text-red-600" />
-                <span>Вставити відео з YouTube</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setShowVideoModal(false)}
-                className="text-neutral-400 hover:text-black cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+              <div className="space-y-4">
+                {imageTab === 'upload' ? (
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      Виберіть фото з пам'яті комп'ютера або телефона *
+                    </label>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="border-2 border-dashed border-neutral-300 hover:border-black rounded-lg p-6 text-center cursor-pointer transition-colors bg-neutral-50/60 hover:bg-neutral-50"
+                    >
+                      <Upload className="w-6 h-6 mx-auto text-neutral-400 mb-2" />
+                      <div className="text-xs font-medium text-neutral-800">
+                        {isUploading ? 'Обробка та оптимізація фото...' : 'Натисніть сюди, щоб вибрати фото'}
+                      </div>
+                      <div className="text-[11px] text-neutral-400 mt-1">
+                        PNG, JPG, WEBP, GIF (зберігається на сервері)
+                      </div>
+                    </div>
 
-            <form onSubmit={handleApplyVideo} className="space-y-4">
-              <div>
-                <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
-                  Посилання на відео (YouTube URL) *
-                </label>
-                <input
-                  type="url"
-                  required
-                  placeholder="https://www.youtube.com/watch?v=... або https://youtu.be/..."
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
-                  autoFocus
-                />
+                    {uploadError && (
+                      <div className="text-xs text-red-600 mt-2">{uploadError}</div>
+                    )}
+
+                    {imageUrl && (
+                      <div className="mt-3 p-2.5 bg-neutral-100 rounded-md flex items-center gap-3 border border-neutral-200">
+                        <img
+                          src={imageUrl}
+                          alt="Прев'ю"
+                          className="w-12 h-12 object-cover rounded border border-neutral-300"
+                        />
+                        <div className="text-xs text-neutral-800 truncate flex-1 font-medium">
+                          ✓ Фото завантажено та готове до вставки
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                      URL посилання на зображення *
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://images.unsplash.com/... або пряме посилання"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleApplyImage();
+                        }
+                      }}
+                      className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                    Підпис до фото (необов'язково)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="напр. Фото: Reuters / Джерело"
+                    value={imageCaption}
+                    onChange={(e) => setImageCaption(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyImage();
+                      }
+                    }}
+                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowImageModal(false)}
+                    className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyImage}
+                    disabled={!imageUrl || isUploading}
+                    className="px-4 py-2 text-xs font-medium bg-black text-white rounded hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Вставити фото у статтю
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+      {/* 4. МОДАЛЬНЕ ВІКНО YOUTUBE */}
+      {showVideoModal &&
+        createPortal(
+          <div
+            onClick={() => setShowVideoModal(false)}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fade-in"
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="bg-white rounded-lg shadow-2xl max-w-md w-full p-6 border border-neutral-200"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-neutral-100 mb-4">
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-black flex items-center gap-2">
+                  <VideoIcon className="w-4 h-4 text-red-600" />
+                  <span>Вставити відео з YouTube</span>
+                </h3>
                 <button
                   type="button"
                   onClick={() => setShowVideoModal(false)}
-                  className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  className="text-neutral-400 hover:text-black cursor-pointer"
                 >
-                  Скасувати
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors cursor-pointer"
-                >
-                  Вставити відео
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-1.5">
+                    Посилання на відео (YouTube URL) *
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://www.youtube.com/watch?v=... або https://youtu.be/..."
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyVideo();
+                      }
+                    }}
+                    className="w-full text-sm border border-neutral-300 rounded px-3 py-2 focus:border-black focus:outline-none font-mono text-xs"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowVideoModal(false)}
+                    className="px-4 py-2 text-xs font-medium text-neutral-600 hover:bg-neutral-100 rounded cursor-pointer"
+                  >
+                    Скасувати
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleApplyVideo}
+                    disabled={!videoUrl.trim()}
+                    className="px-4 py-2 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50 cursor-pointer"
+                  >
+                    Вставити відео
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 };
