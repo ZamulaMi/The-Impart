@@ -56,24 +56,39 @@ html {
   display: inline;
 }
 
-/* Стиль посилань: колір #0089ff з дуже тонкою нижньою лінією підкреслення */
+/* Стиль посилань виключно в статтях та редакторі: колір #0089ff з дуже тонкою нижньою лінією підкреслення */
 .article-rendered-html a,
+.article-content a,
+.prose a,
 .article-link,
-[contenteditable="true"] a,
-a[href] {
+[contenteditable="true"] a {
   color: #0089ff !important;
   text-decoration: underline !important;
   text-decoration-color: rgba(0, 137, 255, 0.45) !important;
   text-decoration-thickness: 1px !important;
   text-underline-offset: 3px !important;
-  transition: text-decoration-color 0.15s ease;
+  transition: text-decoration-color 0.15s ease, color 0.15s ease;
 }
 .article-rendered-html a:hover,
+.article-content a:hover,
+.prose a:hover,
 .article-link:hover,
-[contenteditable="true"] a:hover,
-a[href]:hover {
+[contenteditable="true"] a:hover {
   color: #0070d6 !important;
   text-decoration-color: #0089ff !important;
+}
+
+/* Іконки соцмереж у футері: виключення (сірий у спокої, чорний при наведенні) */
+.footer-social-link,
+.footer-social-link:visited {
+  color: #9ca3af !important;
+  text-decoration: none !important;
+}
+.footer-social-link:hover,
+.footer-social-link:focus,
+.footer-social-link:active {
+  color: #000000 !important;
+  text-decoration: none !important;
 }
 
 /* Callout Blocks */
