@@ -483,32 +483,34 @@ export default function App() {
         }}
       />
 
-      {/* Шапка (Header) - без лінії розділення, компактна */}
-      <header className="w-full bg-white px-4 sm:px-6 md:px-8 lg:px-10 py-3 sm:py-4 flex items-center justify-between">
-        {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва */}
-        <div className="overflow-hidden py-0.5 -my-0.5">
+      {/* Шапка (Header) - пропорція 26:34 (відступи по 4 одиниці зліва та справа, межі збігаються з фото) */}
+      <header className="w-full bg-white py-3.5 sm:py-4">
+        <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
+          {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва */}
+          <div className="overflow-hidden py-0.5 -my-0.5">
+            <button
+              type="button"
+              onClick={() => {
+                navigateTo('main');
+                setActiveSearchFilter(null);
+              }}
+              aria-label="The Impart — Головна сторінка"
+              className="animate-title-slide-down block text-xl sm:text-2xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-left cursor-pointer focus:outline-none"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            >
+              The Impart
+            </button>
+          </div>
+
           <button
             type="button"
-            onClick={() => {
-              navigateTo('main');
-              setActiveSearchFilter(null);
-            }}
-            aria-label="The Impart — Головна сторінка"
-            className="animate-title-slide-down block text-xl sm:text-2xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-left cursor-pointer focus:outline-none"
-            style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            onClick={() => setIsSearchOpen(true)}
+            aria-label="Пошук"
+            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
           >
-            The Impart
+            <Search className="w-5 h-5 stroke-[1.75]" />
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setIsSearchOpen(true)}
-          aria-label="Пошук"
-          className="p-1.5 text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none"
-        >
-          <Search className="w-4.5 h-4.5 stroke-[1.75]" />
-        </button>
       </header>
 
       {/* Центральна частина (Body) зі статтями */}
@@ -522,7 +524,7 @@ export default function App() {
               onSwitchLang={handleSetLang}
             />
           ) : (
-            <div className="max-w-[1380px] w-full mx-auto px-4 sm:px-6 md:px-8 lg:px-10 pt-2 sm:pt-3.5 pb-10 sm:pb-14">
+            <div className="w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
               {/* Індикатор активного фільтра пошуку на головній */}
               {activeSearchFilter && (
                 <div className="mb-6 flex items-center justify-between bg-neutral-50 border border-neutral-200/80 px-4 py-2.5 rounded-lg animate-fade-in">
@@ -759,8 +761,8 @@ export default function App() {
       </main>
 
       {/* Футер */}
-      <footer className="w-full bg-white px-6 sm:px-12 md:px-16 py-10 sm:py-12 border-t border-neutral-100">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+      <footer className="w-full bg-white py-10 sm:py-12 border-t border-neutral-100">
+        <div className="w-[calc(26/34*100%)] mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-6">
           <div className="flex flex-col items-start">
             <span className="text-base sm:text-lg font-normal tracking-normal text-black font-sans select-none">
               The Impart

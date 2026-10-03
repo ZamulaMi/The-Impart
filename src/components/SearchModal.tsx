@@ -25,11 +25,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
   const [isAnimateIn, setIsAnimateIn] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Плавне монтування та розмонтування анімацією
+  // Плавне монтування та розмонтування анімацією, блокування скролу фонової сторінки
   useEffect(() => {
     if (isOpen) {
       setRendered(true);
       setQuery('');
+      document.documentElement.style.overflow = 'hidden';
       document.body.style.overflow = 'hidden';
       const timer = requestAnimationFrame(() => {
         setIsAnimateIn(true);
@@ -40,9 +41,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
       return () => {
         cancelAnimationFrame(timer);
         clearTimeout(focusTimer);
+        document.documentElement.style.overflow = '';
+        document.body.style.overflow = '';
       };
     } else {
       setIsAnimateIn(false);
+      document.documentElement.style.overflow = '';
       document.body.style.overflow = '';
       const timer = setTimeout(() => {
         setRendered(false);
@@ -107,36 +111,40 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className={`fixed inset-0 z-50 flex flex-col justify-between bg-white/95 backdrop-blur-md transition-opacity duration-350 ease-out ${
+      className={`fixed inset-0 z-50 flex flex-col bg-white/95 backdrop-blur-md overflow-hidden transition-opacity duration-300 ease-out ${
         isAnimateIn ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
       {/* 
         Верхня панель модального вікна:
-        Використовує тег header з абсолютно ідентичними класами,
-        структурою flexbox і стилями як і основна шапка сайту.
+        Використовує контейнер ідентичної ширини та відступів,
+        завдяки чому хрестик розташовується ВИКЛЮЧНО над іконкою пошуку.
       */}
-      <header className="w-full bg-transparent px-6 sm:px-12 md:px-16 py-6 sm:py-8 flex items-center justify-between">
-        <span
-          className="text-2xl sm:text-3xl font-medium tracking-tight text-black/30 select-none cursor-default"
-          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
-        >
-          The Impart
-        </span>
+      <header className="w-full bg-transparent py-3.5 sm:py-4">
+        <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
+          <div className="overflow-hidden py-0.5 -my-0.5">
+            <span
+              className="block text-xl sm:text-2xl font-medium tracking-tight text-black/30 select-none cursor-default"
+              style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+            >
+              The Impart
+            </span>
+          </div>
 
-        {/* Кнопка-хрестик: ідентична розмірність (p-2, w-5 h-5, stroke-[1.75]) */}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Закрити пошук"
-          className="p-2 text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
-        >
-          <X className="w-5 h-5 stroke-[1.75]" />
-        </button>
+          {/* Кнопка-хрестик: ідеально збігається з положенням іконки пошуку */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Закрити пошук"
+            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
+          >
+            <X className="w-5 h-5 stroke-[1.75]" />
+          </button>
+        </div>
       </header>
 
-      {/* Центральна зона пошуку */}
-      <div className="flex-1 w-full max-w-2xl mx-auto px-6 sm:px-8 flex flex-col justify-start pt-4 sm:pt-12 pb-8 overflow-y-auto">
+      {/* Центральна зона пошуку (єдиний плавний скрол без подвійного скролу) */}
+      <div className="flex-1 w-full max-w-2xl mx-auto px-6 sm:px-8 flex flex-col justify-start pt-4 sm:pt-12 pb-12 overflow-y-auto">
         {/* Поле вводу по центру з плавною анімацією */}
         <div
           className={`w-full transition-all duration-350 ease-out ${
@@ -205,9 +213,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
               )}
             </div>
 
-            {/* Список знайдених статей */}
+            {/* Список знайдених статей (без подвійного скролу) */}
             {matchingArticles.length > 0 ? (
-              <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+              <div className="space-y-2.5 pr-1">
                 {matchingArticles.map((article) => {
                   const title = isEn && article.titleEn ? article.titleEn : article.title;
                   const excerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
