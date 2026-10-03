@@ -22,6 +22,7 @@ export interface Article {
   excerpt: string;
   content: string;
   category: string;
+  categories?: string[]; // Рубрики статті (UA) - можливість призначити декілька рубрик
   topics?: string[]; // Теми / теги статті (UA)
   author: string;
   coverImage?: string;
@@ -35,6 +36,7 @@ export interface Article {
   excerptEn?: string;
   contentEn?: string;
   categoryEn?: string;
+  categoriesEn?: string[]; // Рубрики статті (EN) - можливість призначити декілька рубрик
   topicsEn?: string[]; // Теми / теги статті (EN)
   publishedEn?: boolean; // Опубліковано для англійської версії сайту
 }

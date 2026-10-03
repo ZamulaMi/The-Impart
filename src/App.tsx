@@ -55,56 +55,57 @@ export const NAV_SECTIONS: NavSectionItem[] = [
 ];
 
 export function matchesHeaderSection(article: Article, section: HeaderSection): boolean {
-  const catUa = (article.category || '').trim().toLowerCase();
-  const catEn = (article.categoryEn || '').trim().toLowerCase();
+  const catsUa = (
+    article.categories && article.categories.length > 0
+      ? article.categories
+      : (article.category ? article.category.split(',').map((s) => s.trim()) : [])
+  ).map((c) => c.toLowerCase());
+
+  const catsEn = (
+    article.categoriesEn && article.categoriesEn.length > 0
+      ? article.categoriesEn
+      : (article.categoryEn ? article.categoryEn.split(',').map((s) => s.trim()) : [])
+  ).map((c) => c.toLowerCase());
+
   const topicsUa = (article.topics || []).map((t) => t.trim().toLowerCase());
   const topicsEn = (article.topicsEn || []).map((t) => t.trim().toLowerCase());
 
+  const allUa = [...catsUa, ...topicsUa];
+  const allEn = [...catsEn, ...topicsEn];
+
   if (section === 'news') {
     return (
-      catUa === 'новини' ||
-      catUa === 'новина' ||
-      catEn === 'news' ||
-      topicsUa.includes('новини') ||
-      topicsEn.includes('news')
+      allUa.some((c) => c === 'новини' || c === 'новина') ||
+      allEn.some((c) => c === 'news')
     );
   }
   if (section === 'reviews') {
     return (
-      catUa === 'обзори' ||
-      catUa === 'огляди' ||
-      catUa === 'обзор' ||
-      catUa === 'огляд' ||
-      catEn === 'reviews' ||
-      catEn === 'review' ||
-      topicsUa.includes('обзори') ||
-      topicsUa.includes('огляди') ||
-      topicsEn.includes('reviews')
+      allUa.some((c) => ['обзори', 'огляди', 'обзор', 'огляд'].includes(c)) ||
+      allEn.some((c) => ['reviews', 'review'].includes(c))
     );
   }
   if (section === 'articles') {
+    const hasArticleCat =
+      allUa.some((c) =>
+        ['статті', 'стаття', 'есе', 'essay', 'філософія', 'philosophy', 'архітектура', 'architecture', 'естетика', 'aesthetics', 'мистецтво', 'art', 'дизайн', 'design', 'культура', 'culture', 'загальне'].includes(c)
+      ) ||
+      allEn.some((c) =>
+        ['articles', 'article', 'essay', 'philosophy', 'architecture', 'aesthetics', 'art', 'design', 'culture'].includes(c)
+      );
+
+    if (hasArticleCat) return true;
+
     const isNews =
-      catUa === 'новини' || catUa === 'новина' || catEn === 'news' || topicsUa.includes('новини');
+      allUa.some((c) => c === 'новини' || c === 'новина') ||
+      allEn.some((c) => c === 'news');
     const isReview =
-      catUa === 'обзори' ||
-      catUa === 'огляди' ||
-      catUa === 'обзор' ||
-      catUa === 'огляд' ||
-      catEn === 'reviews' ||
-      catEn === 'review' ||
-      topicsUa.includes('обзори') ||
-      topicsUa.includes('огляди');
+      allUa.some((c) => ['обзори', 'огляди', 'обзор', 'огляд'].includes(c)) ||
+      allEn.some((c) => ['reviews', 'review'].includes(c));
 
     if (isNews || isReview) return false;
 
-    return (
-      catUa === 'статті' ||
-      catUa === 'стаття' ||
-      catEn === 'articles' ||
-      catEn === 'article' ||
-      ['есе', 'essay', 'філософія', 'philosophy', 'архітектура', 'architecture', 'естетика', 'aesthetics', 'мистецтво', 'art', 'дизайн', 'design', 'культура', 'culture', 'загальне'].includes(catUa) ||
-      !catUa
-    );
+    return true;
   }
   return false;
 }
@@ -121,7 +122,14 @@ function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect 
   const isEn = siteLang === 'en';
   const title = isEn && article.titleEn ? article.titleEn : article.title;
   const excerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
-  const category = isEn && article.categoryEn ? article.categoryEn : article.category;
+
+  const categoriesList =
+    isEn && article.categoriesEn && article.categoriesEn.length > 0
+      ? article.categoriesEn
+      : article.categories && article.categories.length > 0
+      ? article.categories
+      : (isEn && article.categoryEn ? [article.categoryEn] : (article.category ? [article.category] : []));
+  const category = categoriesList.join(' / ');
   const timeAgo = formatTimeAgoOrDate(article.createdAt, article.date, article.id, siteLang);
 
   // Класи пропорцій для фото:
@@ -648,9 +656,9 @@ export default function App() {
 
       {/* Шапка (Header) - пропорція 26:34 (відступи по 4 одиниці зліва та справа, межі збігаються з фото) */}
       <header className="w-full bg-white py-3.5 sm:py-4">
-        <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
+        <div className="relative w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
           {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва (на лівій межі) */}
-          <div className="overflow-hidden py-0.5 -my-0.5">
+          <div className="overflow-hidden py-0.5 -my-0.5 z-10">
             <button
               type="button"
               onClick={() => {
@@ -665,10 +673,10 @@ export default function App() {
             </button>
           </div>
 
-          {/* Розділи сайту (Новини / Статті / Обзори) з витонченою мінімалістичною анімацією */}
+          {/* Розділи сайту (Новини / Статті / Огляди) — строго по центру всього header */}
           <nav
             aria-label="Розділи сайту"
-            className="flex items-center gap-4 sm:gap-7 md:gap-9"
+            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-4 sm:gap-7 md:gap-9 z-10 pointer-events-auto"
           >
             {NAV_SECTIONS.map((sec) => {
               const isActive = activeCategorySection === sec.id && !selectedArticleId;
@@ -698,14 +706,16 @@ export default function App() {
           </nav>
 
           {/* Іконка пошуку (на правій межі) */}
-          <button
-            type="button"
-            onClick={() => setIsSearchOpen(true)}
-            aria-label="Пошук"
-            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5"
-          >
-            <Search className="w-5 h-5 stroke-[1.75]" />
-          </button>
+          <div className="z-10 flex items-center justify-end">
+            <button
+              type="button"
+              onClick={() => setIsSearchOpen(true)}
+              aria-label="Пошук"
+              className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5"
+            >
+              <Search className="w-5 h-5 stroke-[1.75]" />
+            </button>
+          </div>
         </div>
       </header>
 

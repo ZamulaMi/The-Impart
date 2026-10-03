@@ -164,6 +164,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       excerpt: '',
       content: '',
       category: 'Есе',
+      categories: ['Есе'],
+      topics: [],
       author: 'Редакція The Impart',
       coverImage: '',
       date: new Date().toLocaleDateString('uk-UA', { day: 'numeric', month: 'long', year: 'numeric' }),
@@ -172,6 +174,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       excerptEn: '',
       contentEn: '',
       categoryEn: 'Essay',
+      categoriesEn: ['Essay'],
+      topicsEn: [],
       publishedEn: false,
     });
   };
@@ -181,7 +185,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     setIsCreatingNew(false);
     setFormLangTab('ua');
     setEditorTab('edit');
-    setEditingArticle({ ...article });
+    const initialCats =
+      article.categories && article.categories.length > 0
+        ? [...article.categories]
+        : article.category
+        ? article.category.split(',').map((c) => c.trim()).filter(Boolean)
+        : ['Загальне'];
+    const initialCatsEn =
+      article.categoriesEn && article.categoriesEn.length > 0
+        ? [...article.categoriesEn]
+        : article.categoryEn
+        ? article.categoryEn.split(',').map((c) => c.trim()).filter(Boolean)
+        : [];
+
+    setEditingArticle({
+      ...article,
+      categories: initialCats,
+      categoriesEn: initialCatsEn,
+    });
   };
 
   const handleCancel = () => {
@@ -266,7 +287,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       title: editingArticle.title.trim(),
       excerpt: editingArticle.excerpt?.trim() || '',
       content: editingArticle.content?.trim() || '',
-      category: editingArticle.category?.trim() || 'Загальне',
+      category:
+        editingArticle.categories && editingArticle.categories.length > 0
+          ? editingArticle.categories.join(', ')
+          : editingArticle.category?.trim() || 'Загальне',
+      categories:
+        editingArticle.categories && editingArticle.categories.length > 0
+          ? editingArticle.categories
+          : editingArticle.category
+          ? [editingArticle.category.trim()]
+          : ['Загальне'],
       topics: editingArticle.topics || [],
       published: isPub,
       // Загальні метадані
@@ -278,7 +308,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       titleEn: editingArticle.titleEn?.trim() || undefined,
       excerptEn: editingArticle.excerptEn?.trim() || undefined,
       contentEn: editingArticle.contentEn?.trim() || undefined,
-      categoryEn: editingArticle.categoryEn?.trim() || undefined,
+      categoryEn:
+        editingArticle.categoriesEn && editingArticle.categoriesEn.length > 0
+          ? editingArticle.categoriesEn.join(', ')
+          : editingArticle.categoryEn?.trim() || undefined,
+      categoriesEn:
+        editingArticle.categoriesEn && editingArticle.categoriesEn.length > 0
+          ? editingArticle.categoriesEn
+          : editingArticle.categoryEn
+          ? [editingArticle.categoryEn.trim()]
+          : undefined,
       topicsEn: editingArticle.topicsEn || [],
       publishedEn: isPubEn,
     };
@@ -310,7 +349,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     const clean = quickCatName.trim();
     if (!clean) return;
     if (taxonomies.categories.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
-      setEditingArticle((prev) => (prev ? { ...prev, category: clean } : prev));
+      handleToggleCategory(clean, quickCatNameEn.trim() || undefined);
       setShowQuickCreateCat(false);
       setQuickCatName('');
       setQuickCatNameEn('');
@@ -325,19 +364,123 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       ...taxonomies,
       categories: [...taxonomies.categories, newCat],
     });
-    setEditingArticle((prev) =>
-      prev
-        ? {
-            ...prev,
-            category: clean,
-            categoryEn: quickCatNameEn.trim() || prev.categoryEn,
-          }
-        : prev
-    );
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      const currentCats =
+        prev.categories && prev.categories.length > 0
+          ? [...prev.categories]
+          : prev.category
+          ? prev.category.split(',').map((c) => c.trim()).filter(Boolean)
+          : [];
+      const currentCatsEn =
+        prev.categoriesEn && prev.categoriesEn.length > 0
+          ? [...prev.categoriesEn]
+          : prev.categoryEn
+          ? prev.categoryEn.split(',').map((c) => c.trim()).filter(Boolean)
+          : [];
+
+      const nextCats = currentCats.includes(clean) ? currentCats : [...currentCats, clean];
+      const nextCatsEn =
+        quickCatNameEn.trim() && !currentCatsEn.includes(quickCatNameEn.trim())
+          ? [...currentCatsEn, quickCatNameEn.trim()]
+          : currentCatsEn;
+
+      return {
+        ...prev,
+        categories: nextCats,
+        category: nextCats.join(', '),
+        categoriesEn: nextCatsEn,
+        categoryEn: nextCatsEn.join(', '),
+      };
+    });
     setShowQuickCreateCat(false);
     setQuickCatName('');
     setQuickCatNameEn('');
     showNotification(`Створено рубрику «${clean}»`);
+  };
+
+  const handleToggleCategory = (catName: string, catNameEn?: string) => {
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      const currentCats =
+        prev.categories && prev.categories.length > 0
+          ? [...prev.categories]
+          : prev.category
+          ? prev.category.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+      const currentCatsEn =
+        prev.categoriesEn && prev.categoriesEn.length > 0
+          ? [...prev.categoriesEn]
+          : prev.categoryEn
+          ? prev.categoryEn.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+
+      const exists = currentCats.includes(catName);
+      let nextCats: string[];
+      let nextCatsEn: string[];
+
+      if (exists) {
+        if (currentCats.length <= 1) {
+          showNotification('Стаття повинна містити щонайменше одну рубрику.');
+          return prev;
+        }
+        nextCats = currentCats.filter((c) => c !== catName);
+        nextCatsEn = catNameEn ? currentCatsEn.filter((c) => c !== catNameEn) : currentCatsEn;
+      } else {
+        nextCats = [...currentCats, catName];
+        nextCatsEn =
+          catNameEn && !currentCatsEn.includes(catNameEn)
+            ? [...currentCatsEn, catNameEn]
+            : currentCatsEn;
+      }
+
+      return {
+        ...prev,
+        categories: nextCats,
+        category: nextCats.join(', '),
+        categoriesEn: nextCatsEn,
+        categoryEn: nextCatsEn.join(', '),
+      };
+    });
+  };
+
+  const handleToggleCategoryEn = (enName: string, uaName?: string) => {
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      const currentCatsEn =
+        prev.categoriesEn && prev.categoriesEn.length > 0
+          ? [...prev.categoriesEn]
+          : prev.categoryEn
+          ? prev.categoryEn.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+      const currentCatsUa =
+        prev.categories && prev.categories.length > 0
+          ? [...prev.categories]
+          : prev.category
+          ? prev.category.split(',').map((s) => s.trim()).filter(Boolean)
+          : [];
+
+      const exists = currentCatsEn.includes(enName);
+      let nextCatsEn: string[];
+      let nextCatsUa = currentCatsUa;
+
+      if (exists) {
+        nextCatsEn = currentCatsEn.filter((c) => c !== enName);
+      } else {
+        nextCatsEn = [...currentCatsEn, enName];
+        if (uaName && !currentCatsUa.includes(uaName)) {
+          nextCatsUa = [...currentCatsUa, uaName];
+        }
+      }
+
+      return {
+        ...prev,
+        categoriesEn: nextCatsEn,
+        categoryEn: nextCatsEn.join(', '),
+        categories: nextCatsUa,
+        category: nextCatsUa.join(', '),
+      };
+    });
   };
 
   const handleQuickCreateTopic = () => {
@@ -718,11 +861,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  {/* Рубрика статті (UA) */}
+                  {/* Рубрики статті (UA) */}
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="block text-xs uppercase tracking-wider text-neutral-500">
-                        Рубрика статті *
+                        Рубрики статті * (можна обрати кілька)
                       </label>
                       <button
                         type="button"
@@ -775,31 +918,70 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       </div>
                     )}
 
-                    {/* Вибір рубрики зі списку */}
-                    <div className="flex flex-wrap gap-2">
-                      {taxonomies.categories.map((cat) => {
-                        const isSelected = editingArticle.category === cat.name;
+                    {/* Вибір рубрик зі списку (можна обрати декілька) */}
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {taxonomies.categories.map((cat) => {
+                          const currentCats =
+                            editingArticle.categories && editingArticle.categories.length > 0
+                              ? editingArticle.categories
+                              : editingArticle.category
+                              ? editingArticle.category.split(',').map((s) => s.trim()).filter(Boolean)
+                              : [];
+                          const isSelected = currentCats.includes(cat.name);
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => handleToggleCategory(cat.name, cat.nameEn)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-black text-white border-black shadow-xs ring-1 ring-black'
+                                  : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                              <span>{cat.name}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Список призначених рубрик */}
+                      {(() => {
+                        const selectedCats =
+                          editingArticle.categories && editingArticle.categories.length > 0
+                            ? editingArticle.categories
+                            : editingArticle.category
+                            ? editingArticle.category.split(',').map((s) => s.trim()).filter(Boolean)
+                            : [];
+                        if (selectedCats.length === 0) return null;
                         return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => {
-                              setEditingArticle({
-                                ...editingArticle,
-                                category: cat.name,
-                                categoryEn: cat.nameEn || editingArticle.categoryEn,
-                              });
-                            }}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-black text-white border-black shadow-xs'
-                                : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
-                            }`}
-                          >
-                            {cat.name}
-                          </button>
+                          <div className="flex items-center gap-2 text-xs text-neutral-500 pt-1">
+                            <span>Призначені рубрики:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {selectedCats.map((catName) => (
+                                <span
+                                  key={catName}
+                                  className="inline-flex items-center gap-1 bg-neutral-100 text-black px-2 py-0.5 rounded text-[11px] font-medium"
+                                >
+                                  {catName}
+                                  {selectedCats.length > 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleToggleCategory(catName)}
+                                      className="hover:text-red-600 transition-colors ml-0.5 cursor-pointer text-xs"
+                                      title="Видалити рубрику"
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         );
-                      })}
+                      })()}
                     </div>
                   </div>
 
@@ -1025,36 +1207,73 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  {/* Рубрика EN */}
+                  {/* Рубрики EN (можна обрати кілька) */}
                   <div className="space-y-3">
                     <label className="block text-xs uppercase tracking-wider text-neutral-500">
-                      Topic / Category (EN)
+                      Topic / Category (EN) — select multiple if applicable
                     </label>
-                    <div className="flex flex-wrap gap-2">
-                      {taxonomies.categories.map((cat) => {
-                        const enName = cat.nameEn || cat.name;
-                        const isSelected = editingArticle.categoryEn === enName || editingArticle.category === cat.name;
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap gap-2">
+                        {taxonomies.categories.map((cat) => {
+                          const enName = cat.nameEn || cat.name;
+                          const currentCatsEn =
+                            editingArticle.categoriesEn && editingArticle.categoriesEn.length > 0
+                              ? editingArticle.categoriesEn
+                              : editingArticle.categoryEn
+                              ? editingArticle.categoryEn.split(',').map((s) => s.trim()).filter(Boolean)
+                              : [];
+                          const isSelected = currentCatsEn.includes(enName);
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => handleToggleCategoryEn(enName, cat.name)}
+                              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+                                isSelected
+                                  ? 'bg-black text-white border-black shadow-xs ring-1 ring-black'
+                                  : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                              <span>{enName}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Список призначених англійських рубрик */}
+                      {(() => {
+                        const selectedCatsEn =
+                          editingArticle.categoriesEn && editingArticle.categoriesEn.length > 0
+                            ? editingArticle.categoriesEn
+                            : editingArticle.categoryEn
+                            ? editingArticle.categoryEn.split(',').map((s) => s.trim()).filter(Boolean)
+                            : [];
+                        if (selectedCatsEn.length === 0) return null;
                         return (
-                          <button
-                            key={cat.id}
-                            type="button"
-                            onClick={() => {
-                              setEditingArticle({
-                                ...editingArticle,
-                                categoryEn: enName,
-                                category: cat.name,
-                              });
-                            }}
-                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
-                              isSelected
-                                ? 'bg-black text-white border-black shadow-xs'
-                                : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
-                            }`}
-                          >
-                            {enName}
-                          </button>
+                          <div className="flex items-center gap-2 text-xs text-neutral-500 pt-1">
+                            <span>Selected categories:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {selectedCatsEn.map((catEnName) => (
+                                <span
+                                  key={catEnName}
+                                  className="inline-flex items-center gap-1 bg-neutral-100 text-black px-2 py-0.5 rounded text-[11px] font-medium"
+                                >
+                                  {catEnName}
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleCategoryEn(catEnName)}
+                                    className="hover:text-red-600 transition-colors ml-0.5 cursor-pointer text-xs"
+                                    title="Remove category"
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         );
-                      })}
+                      })()}
                     </div>
                   </div>
 
@@ -1398,8 +1617,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             )}
 
                             <span className="text-neutral-300">•</span>
-                            <span className="text-[11px] uppercase tracking-wider text-neutral-500">
-                              {art.category}
+                            <span className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
+                              {art.categories && art.categories.length > 0
+                                ? art.categories.join(' / ')
+                                : art.category}
                             </span>
                             {timeDisplay && (
                               <>

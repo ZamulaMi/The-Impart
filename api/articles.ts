@@ -9,6 +9,8 @@ export interface Article {
   excerpt: string;
   content: string;
   category: string;
+  categories?: string[];
+  topics?: string[];
   author: string;
   coverImage?: string;
   date: string;
@@ -21,6 +23,8 @@ export interface Article {
   excerptEn?: string;
   contentEn?: string;
   categoryEn?: string;
+  categoriesEn?: string[];
+  topicsEn?: string[];
   publishedEn?: boolean;
 }
 
@@ -352,12 +356,27 @@ export async function saveArticle(article: Article): Promise<Article> {
   const contentEn = article.contentEn ? String(article.contentEn).trim() : undefined;
   const categoryEn = article.categoryEn ? String(article.categoryEn).trim() : undefined;
 
+  const categories = Array.isArray(article.categories) && article.categories.length > 0
+    ? article.categories.map((c) => String(c).trim()).filter(Boolean)
+    : (category ? [category] : []);
+  const categoriesEn = Array.isArray(article.categoriesEn) && article.categoriesEn.length > 0
+    ? article.categoriesEn.map((c) => String(c).trim()).filter(Boolean)
+    : (categoryEn ? [categoryEn] : []);
+  const topics = Array.isArray(article.topics)
+    ? article.topics.map((t) => String(t).trim()).filter(Boolean)
+    : undefined;
+  const topicsEn = Array.isArray(article.topicsEn)
+    ? article.topicsEn.map((t) => String(t).trim()).filter(Boolean)
+    : undefined;
+
   const fullArticle: Article = {
     id,
     title,
     excerpt,
     content,
-    category,
+    category: categories.join(', ') || category,
+    categories,
+    topics,
     author,
     coverImage,
     date,
@@ -367,7 +386,9 @@ export async function saveArticle(article: Article): Promise<Article> {
     titleEn,
     excerptEn,
     contentEn,
-    categoryEn,
+    categoryEn: categoriesEn.join(', ') || categoryEn,
+    categoriesEn,
+    topicsEn,
     publishedEn: isPubEn,
   };
 

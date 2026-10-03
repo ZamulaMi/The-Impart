@@ -111,14 +111,14 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     <div
       role="dialog"
       aria-modal="true"
-      className={`fixed inset-0 z-50 flex flex-col bg-white/95 backdrop-blur-md overflow-hidden transition-opacity duration-300 ease-out ${
+      className={`fixed inset-0 z-50 flex flex-col bg-white/80 backdrop-blur-md overflow-hidden transition-opacity duration-300 ease-out ${
         isAnimateIn ? 'opacity-100' : 'opacity-0 pointer-events-none'
       }`}
     >
       {/* 
         Верхня панель модального вікна:
         Використовує контейнер ідентичної ширини та відступів,
-        завдяки чому хрестик розташовується ВИКЛЮЧНО над іконкою пошуку.
+        а хрестик вирівняно точно над круглим колом лінзи лупи.
       */}
       <header className="w-full bg-transparent py-3.5 sm:py-4">
         <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
@@ -131,12 +131,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             </span>
           </div>
 
-          {/* Кнопка-хрестик: ідеально збігається з положенням іконки пошуку */}
+          {/* Кнопка-хрестик: зсунута трохи лівіше, щоб бути строго над колом лупи */}
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрити пошук"
-            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
+            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5 -translate-x-[2.5px]"
           >
             <X className="w-5 h-5 stroke-[1.75]" />
           </button>

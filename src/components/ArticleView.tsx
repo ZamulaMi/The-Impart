@@ -26,7 +26,15 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
   const title = isEn && hasEnVersion ? article.titleEn! : article.title;
   const content = isEn && hasEnVersion ? article.contentEn! : article.content;
   const excerpt = isEn && hasEnVersion ? article.excerptEn : article.excerpt;
-  const category = isEn && hasEnVersion ? article.categoryEn || article.category : article.category;
+  const categoriesList = isEn && hasEnVersion
+    ? (article.categoriesEn && article.categoriesEn.length > 0
+        ? article.categoriesEn
+        : article.categoryEn
+        ? [article.categoryEn]
+        : (article.categories || [article.category])).filter(Boolean)
+    : (article.categories && article.categories.length > 0
+        ? article.categories
+        : article.category ? [article.category] : []).filter(Boolean);
   const topics = isEn && article.topicsEn && article.topicsEn.length > 0 ? article.topicsEn : article.topics;
 
   const isHidden = isEn
@@ -110,11 +118,25 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
         </div>
       </div>
 
-      {/* Рубрика, теми та час публікації */}
+      {/* Рубрики, теми та час публікації */}
       <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wider text-neutral-500 mb-4">
-        <span className="font-medium text-neutral-800 bg-neutral-100 px-2 py-0.5 rounded">
-          {category}
-        </span>
+        {categoriesList.map((cat, idx) => (
+          <span
+            key={`cat_${idx}`}
+            className="font-medium text-neutral-800 bg-neutral-100 px-2.5 py-0.5 rounded"
+          >
+            {cat}
+          </span>
+        ))}
+        {topics &&
+          topics.map((t, idx) => (
+            <span
+              key={`top_${idx}`}
+              className="text-neutral-500 bg-neutral-50 border border-neutral-200/60 px-2 py-0.5 rounded text-[11px]"
+            >
+              #{t}
+            </span>
+          ))}
         {timeDisplay && (
           <>
             <span className="text-neutral-300">•</span>
