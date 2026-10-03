@@ -1,5 +1,5 @@
-import React from 'react';
-import { ArrowLeft, EyeOff, Globe } from 'lucide-react';
+import React, { useState } from 'react';
+import { ArrowLeft, EyeOff, Globe, Link2, Check, Share2 } from 'lucide-react';
 import { Article, SiteLanguage } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
 import { ContentRenderer } from './ContentRenderer';
@@ -20,11 +20,14 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
   const isEn = lang === 'en';
   const hasEnVersion = Boolean(article.titleEn?.trim() && article.contentEn?.trim());
 
+  const [copiedLink, setCopiedLink] = useState(false);
+
   // Вибір даних залежно від обраної мови
   const title = isEn && hasEnVersion ? article.titleEn! : article.title;
   const content = isEn && hasEnVersion ? article.contentEn! : article.content;
   const excerpt = isEn && hasEnVersion ? article.excerptEn : article.excerpt;
   const category = isEn && hasEnVersion ? article.categoryEn || article.category : article.category;
+  const topics = isEn && article.topicsEn && article.topicsEn.length > 0 ? article.topicsEn : article.topics;
 
   const isHidden = isEn
     ? article.publishedEn === false || !article.publishedEn
@@ -32,9 +35,30 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
 
   const timeDisplay = formatTimeAgoOrDate(article.createdAt, article.date, article.id, lang);
 
+  // Копіювання унікального посилання на статтю
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}${window.location.pathname}?article=${article.id}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url).then(() => {
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2200);
+      });
+    } else {
+      // Резервний спосіб
+      const input = document.createElement('input');
+      input.value = url;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2200);
+    }
+  };
+
   return (
     <article className="max-w-3xl mx-auto px-6 sm:px-12 py-10 sm:py-16">
-      {/* Верхня навігація та індикатор прихованості */}
+      {/* Верхня навігація, індикатор прихованості та кнопка копіювання посилання */}
       <div className="flex items-center justify-between mb-8 sm:mb-10">
         <button
           onClick={onBack}
@@ -45,6 +69,28 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Кнопка "Скопіювати посилання на статтю" */}
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            aria-label={isEn ? 'Copy article link' : 'Скопіювати посилання на статтю'}
+            className="inline-flex items-center gap-1.5 text-xs text-neutral-500 hover:text-black bg-neutral-50 hover:bg-neutral-100 border border-neutral-200/80 px-3 py-1 rounded transition-colors cursor-pointer"
+          >
+            {copiedLink ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="text-emerald-700 font-medium">
+                  {isEn ? 'Link copied!' : 'Посилання скопійовано!'}
+                </span>
+              </>
+            ) : (
+              <>
+                <Link2 className="w-3.5 h-3.5" />
+                <span>{isEn ? 'Copy link' : 'Скопіювати посилання'}</span>
+              </>
+            )}
+          </button>
+
           {/* Якщо користувач перемкнувся на англійську, але стаття ще не перекладена */}
           {isEn && !hasEnVersion && (
             <span className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2.5 py-1 rounded">
@@ -64,9 +110,11 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
         </div>
       </div>
 
-      {/* Рубрика та час публікації */}
-      <div className="flex items-center gap-3 text-xs uppercase tracking-wider text-neutral-500 mb-4">
-        <span>{category}</span>
+      {/* Рубрика, теми та час публікації */}
+      <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-wider text-neutral-500 mb-4">
+        <span className="font-medium text-neutral-800 bg-neutral-100 px-2 py-0.5 rounded">
+          {category}
+        </span>
         {timeDisplay && (
           <>
             <span className="text-neutral-300">•</span>
@@ -111,6 +159,25 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
       <div className="prose prose-neutral max-w-none text-base sm:text-lg leading-relaxed text-neutral-800">
         <ContentRenderer content={content} />
       </div>
+
+      {/* Теми статті внизу матеріалу */}
+      {topics && topics.length > 0 && (
+        <div className="mt-12 pt-6 border-t border-neutral-100">
+          <div className="text-xs uppercase tracking-wider text-neutral-400 mb-3 font-sans">
+            {isEn ? 'Topics & Themes' : 'Теми статті'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {topics.map((t) => (
+              <span
+                key={t}
+                className="px-3 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-700 text-xs rounded-md transition-colors"
+              >
+                #{t}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </article>
   );
 };

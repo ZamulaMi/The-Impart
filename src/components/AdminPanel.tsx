@@ -17,12 +17,16 @@ import {
   FileText,
   Share2,
   Upload,
+  Link2,
+  FolderTree,
+  Tag,
 } from 'lucide-react';
-import { Article, SiteSocialLinks } from '../types';
+import { Article, SiteSocialLinks, TaxonomiesData } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
 import { ContentRenderer } from './ContentRenderer';
 import { SocialLinksManager } from './SocialLinksManager';
 import { RichArticleEditor } from './RichArticleEditor';
+import { TaxonomyManager } from './TaxonomyManager';
 
 interface AdminPanelProps {
   articles: Article[];
@@ -33,6 +37,8 @@ interface AdminPanelProps {
   socialLinks: SiteSocialLinks;
   onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
   onRefreshSocialLinks?: () => Promise<void>;
+  taxonomies: TaxonomiesData;
+  onSaveTaxonomies: (data: TaxonomiesData) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -44,9 +50,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   socialLinks,
   onSaveSocialLinks,
   onRefreshSocialLinks,
+  taxonomies,
+  onSaveTaxonomies,
 }) => {
-  // Розділ адмін-панелі: за замовчуванням "Редактор статей" ('articles') або "Соц. мережі" ('social_links')
-  const [activeSection, setActiveSection] = useState<'articles' | 'social_links'>('articles');
+  // Розділ адмін-панелі: "Редактор статей" ('articles'), "Рубрики та теми" ('taxonomies') або "Соц. мережі" ('social_links')
+  const [activeSection, setActiveSection] = useState<'articles' | 'taxonomies' | 'social_links'>('articles');
 
   const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -55,6 +63,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<'all' | 'published_ua' | 'published_en' | 'hidden'>('all');
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  // Швидке створення рубрик та тем безпосередньо у формі статті
+  const [showQuickCreateCat, setShowQuickCreateCat] = useState(false);
+  const [quickCatName, setQuickCatName] = useState('');
+  const [quickCatNameEn, setQuickCatNameEn] = useState('');
+
+  const [showQuickCreateTop, setShowQuickCreateTop] = useState(false);
+  const [quickTopName, setQuickTopName] = useState('');
+  const [quickTopNameEn, setQuickTopNameEn] = useState('');
 
   // Мовна вкладка у редакторі форми: 'ua' або 'en'
   const [formLangTab, setFormLangTab] = useState<'ua' | 'en'>('ua');
@@ -250,6 +267,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       excerpt: editingArticle.excerpt?.trim() || '',
       content: editingArticle.content?.trim() || '',
       category: editingArticle.category?.trim() || 'Загальне',
+      topics: editingArticle.topics || [],
       published: isPub,
       // Загальні метадані
       author: editingArticle.author?.trim() || 'Редакція The Impart',
@@ -261,6 +279,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       excerptEn: editingArticle.excerptEn?.trim() || undefined,
       contentEn: editingArticle.contentEn?.trim() || undefined,
       categoryEn: editingArticle.categoryEn?.trim() || undefined,
+      topicsEn: editingArticle.topicsEn || [],
       publishedEn: isPubEn,
     };
 
@@ -285,6 +304,108 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleQuickCreateCategory = () => {
+    const clean = quickCatName.trim();
+    if (!clean) return;
+    if (taxonomies.categories.some((c) => c.name.toLowerCase() === clean.toLowerCase())) {
+      setEditingArticle((prev) => (prev ? { ...prev, category: clean } : prev));
+      setShowQuickCreateCat(false);
+      setQuickCatName('');
+      setQuickCatNameEn('');
+      return;
+    }
+    const newCat = {
+      id: `cat-${Date.now()}`,
+      name: clean,
+      nameEn: quickCatNameEn.trim() || undefined,
+    };
+    onSaveTaxonomies({
+      ...taxonomies,
+      categories: [...taxonomies.categories, newCat],
+    });
+    setEditingArticle((prev) =>
+      prev
+        ? {
+            ...prev,
+            category: clean,
+            categoryEn: quickCatNameEn.trim() || prev.categoryEn,
+          }
+        : prev
+    );
+    setShowQuickCreateCat(false);
+    setQuickCatName('');
+    setQuickCatNameEn('');
+    showNotification(`Створено рубрику «${clean}»`);
+  };
+
+  const handleQuickCreateTopic = () => {
+    const clean = quickTopName.trim();
+    if (!clean) return;
+    let updatedTopics = [...taxonomies.topics];
+    if (!updatedTopics.some((t) => t.name.toLowerCase() === clean.toLowerCase())) {
+      const newTop = {
+        id: `top-${Date.now()}`,
+        name: clean,
+        nameEn: quickTopNameEn.trim() || undefined,
+      };
+      updatedTopics.push(newTop);
+      onSaveTaxonomies({
+        ...taxonomies,
+        topics: updatedTopics,
+      });
+    }
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      const current = prev.topics || [];
+      if (!current.includes(clean)) {
+        return {
+          ...prev,
+          topics: [...current, clean],
+          topicsEn: quickTopNameEn.trim()
+            ? [...(prev.topicsEn || []), quickTopNameEn.trim()]
+            : prev.topicsEn,
+        };
+      }
+      return prev;
+    });
+    setShowQuickCreateTop(false);
+    setQuickTopName('');
+    setQuickTopNameEn('');
+    showNotification(`Додано тему «${clean}»`);
+  };
+
+  const handleToggleTopic = (topicName: string, topicNameEn?: string) => {
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      const current = prev.topics || [];
+      const currentEn = prev.topicsEn || [];
+      const exists = current.includes(topicName);
+      if (exists) {
+        return {
+          ...prev,
+          topics: current.filter((t) => t !== topicName),
+          topicsEn: topicNameEn ? currentEn.filter((t) => t !== topicNameEn) : currentEn,
+        };
+      } else {
+        return {
+          ...prev,
+          topics: [...current, topicName],
+          topicsEn: topicNameEn ? [...currentEn, topicNameEn] : currentEn,
+        };
+      }
+    });
+  };
+
+  const handleRemoveTopic = (topicName: string) => {
+    setEditingArticle((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        topics: (prev.topics || []).filter((t) => t !== topicName),
+      };
+    });
   };
 
   const filteredArticles = articles.filter((a) => {
@@ -378,7 +499,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <span>Редактор статей</span>
             </button>
 
-            {/* Опція 2: Соц. мережі */}
+            {/* Опція 2: Рубрики та теми */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('taxonomies');
+                setEditingArticle(null);
+                setIsCreatingNew(false);
+              }}
+              className={`flex-1 md:flex-initial flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-md transition-all cursor-pointer text-left ${
+                activeSection === 'taxonomies'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+              }`}
+            >
+              <FolderTree className="w-4 h-4 shrink-0" />
+              <span>Рубрики та теми</span>
+            </button>
+
+            {/* Опція 3: Соц. мережі */}
             <button
               type="button"
               onClick={() => {
@@ -400,7 +539,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
         {/* Робоча область вибраного розділу */}
         <main className="flex-1 w-full px-6 sm:px-12 py-8 sm:py-12 overflow-x-hidden">
-          {activeSection === 'social_links' ? (
+          {activeSection === 'taxonomies' ? (
+            <TaxonomyManager
+              taxonomies={taxonomies}
+              onSaveTaxonomies={onSaveTaxonomies}
+              articles={articles}
+              showNotification={showNotification}
+            />
+          ) : activeSection === 'social_links' ? (
             <SocialLinksManager
               socialLinks={socialLinks}
               onSaveSocialLinks={onSaveSocialLinks}
@@ -572,18 +718,195 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     />
                   </div>
 
-                  {/* Рубрика UA */}
-                  <div>
-                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
-                      Рубрика / Тема (UA)
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="напр. Філософія, Архітектура, Есе"
-                      value={editingArticle.category || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, category: e.target.value })}
-                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                    />
+                  {/* Рубрика статті (UA) */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                        Рубрика статті *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickCreateCat(!showQuickCreateCat)}
+                        className="text-xs text-neutral-500 hover:text-black flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{showQuickCreateCat ? 'Скасувати' : 'Створити нову рубрику'}</span>
+                      </button>
+                    </div>
+
+                    {showQuickCreateCat && (
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg space-y-2">
+                        <div className="text-xs font-medium text-black">Нова рубрика</div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            placeholder="Назва рубрики (UA)..."
+                            value={quickCatName}
+                            onChange={(e) => setQuickCatName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickCreateCategory();
+                              }
+                            }}
+                            className="w-full text-xs bg-white border border-neutral-200 px-3 py-1.5 rounded focus:outline-none focus:border-black"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Name in EN..."
+                            value={quickCatNameEn}
+                            onChange={(e) => setQuickCatNameEn(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickCreateCategory();
+                              }
+                            }}
+                            className="w-full text-xs bg-white border border-neutral-200 px-3 py-1.5 rounded focus:outline-none focus:border-black"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleQuickCreateCategory}
+                            className="px-3.5 py-1.5 bg-black text-white text-xs font-medium rounded hover:bg-neutral-800 shrink-0 cursor-pointer"
+                          >
+                            Додати
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Вибір рубрики зі списку */}
+                    <div className="flex flex-wrap gap-2">
+                      {taxonomies.categories.map((cat) => {
+                        const isSelected = editingArticle.category === cat.name;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              setEditingArticle({
+                                ...editingArticle,
+                                category: cat.name,
+                                categoryEn: cat.nameEn || editingArticle.categoryEn,
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-black text-white border-black shadow-xs'
+                                : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
+                            }`}
+                          >
+                            {cat.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Теми статті (Topics / Tags) */}
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                        Теми статті (для детального сортування)
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowQuickCreateTop(!showQuickCreateTop)}
+                        className="text-xs text-neutral-500 hover:text-black flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{showQuickCreateTop ? 'Скасувати' : 'Створити нову тему'}</span>
+                      </button>
+                    </div>
+
+                    {showQuickCreateTop && (
+                      <div className="p-3 bg-neutral-50 border border-neutral-200 rounded-lg space-y-2">
+                        <div className="text-xs font-medium text-black">Нова тема / тег</div>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <input
+                            type="text"
+                            placeholder="Назва теми (UA)..."
+                            value={quickTopName}
+                            onChange={(e) => setQuickTopName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickCreateTopic();
+                              }
+                            }}
+                            className="w-full text-xs bg-white border border-neutral-200 px-3 py-1.5 rounded focus:outline-none focus:border-black"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Topic name in EN..."
+                            value={quickTopNameEn}
+                            onChange={(e) => setQuickTopNameEn(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleQuickCreateTopic();
+                              }
+                            }}
+                            className="w-full text-xs bg-white border border-neutral-200 px-3 py-1.5 rounded focus:outline-none focus:border-black"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleQuickCreateTopic}
+                            className="px-3.5 py-1.5 bg-black text-white text-xs font-medium rounded hover:bg-neutral-800 shrink-0 cursor-pointer"
+                          >
+                            Додати тему
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Обрані теми для цієї статті */}
+                    {editingArticle.topics && editingArticle.topics.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[11px] text-neutral-400 mr-1">Обрані теми:</span>
+                        {editingArticle.topics.map((t) => (
+                          <span
+                            key={t}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-black text-white text-xs rounded-md shadow-xs"
+                          >
+                            <span>#{t}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTopic(t)}
+                              className="hover:text-neutral-300 cursor-pointer"
+                              title="Прибрати зі статті"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Вибір тем з доступних */}
+                    <div className="flex flex-wrap gap-1.5 p-3 bg-neutral-50/70 border border-neutral-200/80 rounded-lg">
+                      <div className="w-full text-[11px] text-neutral-400 mb-1">
+                        Оберіть теми зі списку нижче:
+                      </div>
+                      {taxonomies.topics.map((top) => {
+                        const isAttached = editingArticle.topics?.includes(top.name);
+                        return (
+                          <button
+                            key={top.id}
+                            type="button"
+                            onClick={() => handleToggleTopic(top.name, top.nameEn)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                              isAttached
+                                ? 'bg-neutral-900 text-white font-medium shadow-xs'
+                                : 'bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400 hover:text-black'
+                            }`}
+                          >
+                            {isAttached && <Check className="w-3 h-3 text-emerald-400" />}
+                            <span>#{top.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Короткий опис UA */}
@@ -703,17 +1026,69 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   </div>
 
                   {/* Рубрика EN */}
-                  <div>
-                    <label className="block text-xs uppercase tracking-wider text-neutral-500 mb-2">
+                  <div className="space-y-3">
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500">
                       Topic / Category (EN)
                     </label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Philosophy, Architecture, Essay"
-                      value={editingArticle.categoryEn || ''}
-                      onChange={(e) => setEditingArticle({ ...editingArticle, categoryEn: e.target.value })}
-                      className="w-full text-sm border-b border-neutral-200 pb-1.5 focus:border-black focus:outline-none transition-colors"
-                    />
+                    <div className="flex flex-wrap gap-2">
+                      {taxonomies.categories.map((cat) => {
+                        const enName = cat.nameEn || cat.name;
+                        const isSelected = editingArticle.categoryEn === enName || editingArticle.category === cat.name;
+                        return (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => {
+                              setEditingArticle({
+                                ...editingArticle,
+                                categoryEn: enName,
+                                category: cat.name,
+                              });
+                            }}
+                            className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all cursor-pointer ${
+                              isSelected
+                                ? 'bg-black text-white border-black shadow-xs'
+                                : 'bg-white text-neutral-700 border-neutral-200 hover:border-neutral-400'
+                            }`}
+                          >
+                            {enName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Теми EN */}
+                  <div className="space-y-3 pt-1">
+                    <label className="block text-xs uppercase tracking-wider text-neutral-500">
+                      Article Themes & Tags (EN)
+                    </label>
+                    <div className="flex flex-wrap gap-1.5 p-3 bg-neutral-50/70 border border-neutral-200/80 rounded-lg">
+                      <div className="w-full text-[11px] text-neutral-400 mb-1">
+                        Select themes in English for international readers:
+                      </div>
+                      {taxonomies.topics.map((top) => {
+                        const topEnName = top.nameEn || top.name;
+                        const isAttached =
+                          editingArticle.topicsEn?.includes(topEnName) ||
+                          editingArticle.topics?.includes(top.name);
+                        return (
+                          <button
+                            key={top.id}
+                            type="button"
+                            onClick={() => handleToggleTopic(top.name, topEnName)}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded text-xs transition-colors cursor-pointer ${
+                              isAttached
+                                ? 'bg-neutral-900 text-white font-medium shadow-xs'
+                                : 'bg-white text-neutral-600 border border-neutral-200 hover:border-neutral-400 hover:text-black'
+                            }`}
+                          >
+                            {isAttached && <Check className="w-3 h-3 text-emerald-400" />}
+                            <span>#{topEnName}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   {/* Короткий опис EN */}
@@ -1052,6 +1427,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               {art.excerpt}
                             </p>
                           )}
+
+                          {art.topics && art.topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {art.topics.map((t) => (
+                                <span
+                                  key={t}
+                                  className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded"
+                                >
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
                           <p className="text-[11px] text-neutral-400 mt-1">
                             {art.author}
                           </p>
@@ -1111,6 +1500,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             )}
                           </button>
                         )}
+
+                        {/* Скопіювати пряме посилання на статтю */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const url = `${window.location.origin}${window.location.pathname}?article=${art.id}`;
+                            navigator.clipboard.writeText(url).then(() => {
+                              showNotification('Пряме посилання на статтю скопійовано');
+                            });
+                          }}
+                          className="p-2 text-neutral-500 hover:text-black hover:bg-neutral-100 rounded transition-colors cursor-pointer"
+                          title="Скопіювати пряме посилання на статтю"
+                        >
+                          <Link2 className="w-4 h-4" />
+                        </button>
 
                         {/* Перегляд на сайті */}
                         <button

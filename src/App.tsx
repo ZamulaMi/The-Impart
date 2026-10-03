@@ -5,11 +5,12 @@
 
 import { useState, useEffect } from 'react';
 import { Search, X } from 'lucide-react';
-import { Article, SiteLanguage, SiteSocialLinks } from './types';
+import { Article, SiteLanguage, SiteSocialLinks, TaxonomiesData } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
 import { formatTimeAgoOrDate } from './utils/date';
+import { getStoredTaxonomies, saveStoredTaxonomies } from './utils/taxonomies';
 import {
   fetchSocialLinksFromCloud,
   saveSocialLinksToCloud,
@@ -164,7 +165,24 @@ export default function App() {
     return DEFAULT_SOCIAL_LINKS;
   });
 
-  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const art = params.get('article');
+    if (art) return art;
+    if (window.location.hash.startsWith('#article-')) {
+      return window.location.hash.replace('#article-', '');
+    }
+    return null;
+  });
+
+  const [taxonomies, setTaxonomies] = useState<TaxonomiesData>(() => getStoredTaxonomies());
+
+  const handleSaveTaxonomies = (data: TaxonomiesData) => {
+    setTaxonomies(data);
+    saveStoredTaxonomies(data);
+  };
+
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -333,6 +351,9 @@ export default function App() {
         setSelectedArticleId(null);
       } else {
         setCurrentRoute('main');
+        const params = new URLSearchParams(search);
+        const artParam = params.get('article') || (hash.startsWith('#article-') ? hash.replace('#article-', '') : null);
+        setSelectedArticleId(artParam || null);
         fetchArticlesFromDb();
         fetchSocialLinksFromDb();
       }
@@ -352,14 +373,26 @@ export default function App() {
       setCurrentRoute('admin');
       setSelectedArticleId(null);
     } else {
-      window.history.pushState(null, '', '/');
       setCurrentRoute('main');
       if (articleId) {
+        window.history.pushState(null, '', `?article=${encodeURIComponent(articleId)}`);
         setSelectedArticleId(articleId);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
+        window.history.pushState(null, '', window.location.pathname);
         setSelectedArticleId(null);
       }
+    }
+  };
+
+  const handleSelectArticle = (id: string | null) => {
+    if (id) {
+      window.history.pushState(null, '', `?article=${encodeURIComponent(id)}`);
+      setSelectedArticleId(id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.history.pushState(null, '', window.location.pathname);
+      setSelectedArticleId(null);
     }
   };
 
@@ -441,6 +474,8 @@ export default function App() {
         socialLinks={socialLinks}
         onSaveSocialLinks={handleSaveSocialLinks}
         onRefreshSocialLinks={fetchSocialLinksFromDb}
+        taxonomies={taxonomies}
+        onSaveTaxonomies={handleSaveTaxonomies}
       />
     );
   }
@@ -470,11 +505,10 @@ export default function App() {
         articles={articles}
         lang={siteLang}
         onSelectArticle={(id) => {
-          setSelectedArticleId(id);
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          handleSelectArticle(id);
         }}
         onShowAllSearchResults={(query, results) => {
-          setSelectedArticleId(null);
+          handleSelectArticle(null);
           setActiveSearchFilter({
             query,
             articleIds: results.map((r) => r.id),
@@ -520,7 +554,7 @@ export default function App() {
             <ArticleView
               article={selectedArticle}
               lang={siteLang}
-              onBack={() => setSelectedArticleId(null)}
+              onBack={() => handleSelectArticle(null)}
               onSwitchLang={handleSetLang}
             />
           ) : (
@@ -630,7 +664,7 @@ export default function App() {
                                 siteLang={siteLang}
                                 aspectRatio="26/10.5"
                                 isHero
-                                onSelect={(id) => setSelectedArticleId(id)}
+                                onSelect={(id) => handleSelectArticle(id)}
                               />
                             ))}
                           </div>
@@ -645,7 +679,7 @@ export default function App() {
                                 article={article}
                                 siteLang={siteLang}
                                 aspectRatio="16/9"
-                                onSelect={(id) => setSelectedArticleId(id)}
+                                onSelect={(id) => handleSelectArticle(id)}
                               />
                             ))}
                           </div>
@@ -660,7 +694,7 @@ export default function App() {
                                 article={article}
                                 siteLang={siteLang}
                                 aspectRatio="3/4"
-                                onSelect={(id) => setSelectedArticleId(id)}
+                                onSelect={(id) => handleSelectArticle(id)}
                               />
                             ))}
                           </div>
@@ -675,7 +709,7 @@ export default function App() {
                                 article={article}
                                 siteLang={siteLang}
                                 aspectRatio="16/9"
-                                onSelect={(id) => setSelectedArticleId(id)}
+                                onSelect={(id) => handleSelectArticle(id)}
                               />
                             ))}
                           </div>
@@ -690,7 +724,7 @@ export default function App() {
                                 article={article}
                                 siteLang={siteLang}
                                 aspectRatio="16/9"
-                                onSelect={(id) => setSelectedArticleId(id)}
+                                onSelect={(id) => handleSelectArticle(id)}
                               />
                             ))}
                           </div>
@@ -710,7 +744,7 @@ export default function App() {
                                     article={article}
                                     siteLang={siteLang}
                                     aspectRatio="3/4"
-                                    onSelect={(id) => setSelectedArticleId(id)}
+                                    onSelect={(id) => handleSelectArticle(id)}
                                   />
                                 ))}
                               </div>
@@ -727,7 +761,7 @@ export default function App() {
                                   article={article}
                                   siteLang={siteLang}
                                   aspectRatio="16/9"
-                                  onSelect={(id) => setSelectedArticleId(id)}
+                                  onSelect={(id) => handleSelectArticle(id)}
                                 />
                               ))}
                             </div>

@@ -1,3 +1,20 @@
+export interface CategoryItem {
+  id: string;
+  name: string;
+  nameEn?: string;
+}
+
+export interface TopicItem {
+  id: string;
+  name: string;
+  nameEn?: string;
+}
+
+export interface TaxonomiesData {
+  categories: CategoryItem[];
+  topics: TopicItem[];
+}
+
 export interface Article {
   id: string;
   // Українська версія (основна)
@@ -5,6 +22,7 @@ export interface Article {
   excerpt: string;
   content: string;
   category: string;
+  topics?: string[]; // Теми / теги статті (UA)
   author: string;
   coverImage?: string;
   date: string;
@@ -17,6 +35,7 @@ export interface Article {
   excerptEn?: string;
   contentEn?: string;
   categoryEn?: string;
+  topicsEn?: string[]; // Теми / теги статті (EN)
   publishedEn?: boolean; // Опубліковано для англійської версії сайту
 }
 
