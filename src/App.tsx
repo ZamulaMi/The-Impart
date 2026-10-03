@@ -40,6 +40,75 @@ const DEFAULT_SOCIAL_LINKS: SiteSocialLinks = {
   },
 };
 
+export type HeaderSection = 'news' | 'articles' | 'reviews';
+
+export interface NavSectionItem {
+  id: HeaderSection;
+  titleUa: string;
+  titleEn: string;
+}
+
+export const NAV_SECTIONS: NavSectionItem[] = [
+  { id: 'news', titleUa: 'Новини', titleEn: 'News' },
+  { id: 'articles', titleUa: 'Статті', titleEn: 'Articles' },
+  { id: 'reviews', titleUa: 'Огляди', titleEn: 'Reviews' },
+];
+
+export function matchesHeaderSection(article: Article, section: HeaderSection): boolean {
+  const catUa = (article.category || '').trim().toLowerCase();
+  const catEn = (article.categoryEn || '').trim().toLowerCase();
+  const topicsUa = (article.topics || []).map((t) => t.trim().toLowerCase());
+  const topicsEn = (article.topicsEn || []).map((t) => t.trim().toLowerCase());
+
+  if (section === 'news') {
+    return (
+      catUa === 'новини' ||
+      catUa === 'новина' ||
+      catEn === 'news' ||
+      topicsUa.includes('новини') ||
+      topicsEn.includes('news')
+    );
+  }
+  if (section === 'reviews') {
+    return (
+      catUa === 'обзори' ||
+      catUa === 'огляди' ||
+      catUa === 'обзор' ||
+      catUa === 'огляд' ||
+      catEn === 'reviews' ||
+      catEn === 'review' ||
+      topicsUa.includes('обзори') ||
+      topicsUa.includes('огляди') ||
+      topicsEn.includes('reviews')
+    );
+  }
+  if (section === 'articles') {
+    const isNews =
+      catUa === 'новини' || catUa === 'новина' || catEn === 'news' || topicsUa.includes('новини');
+    const isReview =
+      catUa === 'обзори' ||
+      catUa === 'огляди' ||
+      catUa === 'обзор' ||
+      catUa === 'огляд' ||
+      catEn === 'reviews' ||
+      catEn === 'review' ||
+      topicsUa.includes('обзори') ||
+      topicsUa.includes('огляди');
+
+    if (isNews || isReview) return false;
+
+    return (
+      catUa === 'статті' ||
+      catUa === 'стаття' ||
+      catEn === 'articles' ||
+      catEn === 'article' ||
+      ['есе', 'essay', 'філософія', 'philosophy', 'архітектура', 'architecture', 'естетика', 'aesthetics', 'мистецтво', 'art', 'дизайн', 'design', 'культура', 'culture', 'загальне'].includes(catUa) ||
+      !catUa
+    );
+  }
+  return false;
+}
+
 interface ArticleCardProps {
   article: Article;
   siteLang: SiteLanguage;
@@ -185,6 +254,23 @@ export default function App() {
 
   const [articles, setArticles] = useState<Article[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Активний розділ у шапці: 'news' | 'articles' | 'reviews' | null (null = головна стрічка)
+  const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const sec = params.get('section') as HeaderSection | null;
+    if (sec && ['news', 'articles', 'reviews'].includes(sec)) return sec;
+    return null;
+  });
+
+  // Поточна сторінка для пагінації у розділах рубрик (по 10 статей на сторінку)
+  const [categoryPage, setCategoryPage] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1;
+    const params = new URLSearchParams(window.location.search);
+    const pg = parseInt(params.get('page') || '1', 10);
+    return isNaN(pg) || pg < 1 ? 1 : pg;
+  });
 
   // Стан пошуку
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -354,6 +440,14 @@ export default function App() {
         const params = new URLSearchParams(search);
         const artParam = params.get('article') || (hash.startsWith('#article-') ? hash.replace('#article-', '') : null);
         setSelectedArticleId(artParam || null);
+        const secParam = params.get('section') as HeaderSection | null;
+        if (secParam && ['news', 'articles', 'reviews'].includes(secParam)) {
+          setActiveCategorySection(secParam);
+        } else {
+          setActiveCategorySection(null);
+        }
+        const pgParam = parseInt(params.get('page') || '1', 10);
+        setCategoryPage(isNaN(pgParam) || pgParam < 1 ? 1 : pgParam);
         fetchArticlesFromDb();
         fetchSocialLinksFromDb();
       }
@@ -381,8 +475,34 @@ export default function App() {
       } else {
         window.history.pushState(null, '', window.location.pathname);
         setSelectedArticleId(null);
+        setActiveCategorySection(null);
       }
     }
+  };
+
+  const handleSelectSection = (sec: HeaderSection | null) => {
+    setActiveCategorySection(sec);
+    setCategoryPage(1);
+    setSelectedArticleId(null);
+    setActiveSearchFilter(null);
+    if (sec) {
+      window.history.pushState(null, '', `?section=${sec}`);
+    } else {
+      window.history.pushState(null, '', window.location.pathname);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleSelectCategoryPage = (pageNumber: number) => {
+    setCategoryPage(pageNumber);
+    if (activeCategorySection) {
+      window.history.pushState(
+        null,
+        '',
+        `?section=${activeCategorySection}${pageNumber > 1 ? `&page=${pageNumber}` : ''}`
+      );
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSelectArticle = (id: string | null) => {
@@ -391,7 +511,16 @@ export default function App() {
       setSelectedArticleId(id);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      window.history.pushState(null, '', window.location.pathname);
+      // Якщо повернулися зі статті, відновлюємо URL розділу (якщо такий був обраний) або головної
+      if (activeCategorySection) {
+        window.history.pushState(
+          null,
+          '',
+          `?section=${activeCategorySection}${categoryPage > 1 ? `&page=${categoryPage}` : ''}`
+        );
+      } else {
+        window.history.pushState(null, '', window.location.pathname);
+      }
       setSelectedArticleId(null);
     }
   };
@@ -520,12 +649,12 @@ export default function App() {
       {/* Шапка (Header) - пропорція 26:34 (відступи по 4 одиниці зліва та справа, межі збігаються з фото) */}
       <header className="w-full bg-white py-3.5 sm:py-4">
         <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
-          {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва */}
+          {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва (на лівій межі) */}
           <div className="overflow-hidden py-0.5 -my-0.5">
             <button
               type="button"
               onClick={() => {
-                navigateTo('main');
+                handleSelectSection(null);
                 setActiveSearchFilter(null);
               }}
               aria-label="The Impart — Головна сторінка"
@@ -536,11 +665,44 @@ export default function App() {
             </button>
           </div>
 
+          {/* Розділи сайту (Новини / Статті / Обзори) з витонченою мінімалістичною анімацією */}
+          <nav
+            aria-label="Розділи сайту"
+            className="flex items-center gap-4 sm:gap-7 md:gap-9"
+          >
+            {NAV_SECTIONS.map((sec) => {
+              const isActive = activeCategorySection === sec.id && !selectedArticleId;
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  onClick={() => handleSelectSection(sec.id)}
+                  className={`group relative py-1 text-xs sm:text-sm md:text-[15px] tracking-wide transition-colors duration-250 cursor-pointer focus:outline-none ${
+                    isActive
+                      ? 'text-black font-medium'
+                      : 'text-neutral-500 hover:text-black font-normal'
+                  }`}
+                >
+                  <span className="relative z-10 transition-transform duration-200 inline-block group-hover:-translate-y-[0.5px]">
+                    {siteLang === 'en' ? sec.titleEn : sec.titleUa}
+                  </span>
+                  {/* Мінімалістична лінія-підкреслення з плавною анімацією розширення */}
+                  <span
+                    className={`absolute bottom-0 left-0 h-[1.5px] bg-black transition-all duration-300 ease-out ${
+                      isActive ? 'w-full' : 'w-0 group-hover:w-full'
+                    }`}
+                  />
+                </button>
+              );
+            })}
+          </nav>
+
+          {/* Іконка пошуку (на правій межі) */}
           <button
             type="button"
             onClick={() => setIsSearchOpen(true)}
             aria-label="Пошук"
-            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center"
+            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5"
           >
             <Search className="w-5 h-5 stroke-[1.75]" />
           </button>
@@ -557,6 +719,219 @@ export default function App() {
               onBack={() => handleSelectArticle(null)}
               onSwitchLang={handleSetLang}
             />
+          ) : activeCategorySection ? (
+            /* Сторінка обраної рубрики (Новини / Статті / Обзори) */
+            <div className="w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
+              {(() => {
+                const categoryArticles = publishedArticles.filter((article) =>
+                  matchesHeaderSection(article, activeCategorySection)
+                );
+                const totalCategoryPages = Math.max(1, Math.ceil(categoryArticles.length / 10));
+                const safePage = Math.min(Math.max(1, categoryPage), totalCategoryPages);
+                const startIndex = (safePage - 1) * 10;
+                const pageArticles = categoryArticles.slice(startIndex, startIndex + 10);
+
+                // Розмітка без великого фото згідно з вимогами:
+                // Ряд 1: 2 горизонтальні (16:9)
+                // Ряд 2: 3 вертикальні (3:4)
+                // Ряд 3: 2 горизонтальні (16:9)
+                // Ряд 4: 3 вертикальні (3:4)
+                const catRow1 = pageArticles.slice(0, 2);
+                const catRow2 = pageArticles.slice(2, 5);
+                const catRow3 = pageArticles.slice(5, 7);
+                const catRow4 = pageArticles.slice(7, 10);
+
+                const sectionTitle =
+                  siteLang === 'en'
+                    ? activeCategorySection === 'news'
+                      ? 'News'
+                      : activeCategorySection === 'reviews'
+                      ? 'Reviews'
+                      : 'Articles'
+                    : activeCategorySection === 'news'
+                    ? 'Новини'
+                    : activeCategorySection === 'reviews'
+                    ? 'Огляди'
+                    : 'Статті';
+
+                return (
+                  <div className="space-y-6 sm:space-y-8 animate-fade-in">
+                    {/* Заголовок поточної рубрики */}
+                    <div className="flex items-baseline justify-between border-b border-neutral-100 pb-3">
+                      <div className="flex items-baseline gap-3">
+                        <h1
+                          className="text-2xl sm:text-3xl font-medium tracking-tight text-black"
+                          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+                        >
+                          {sectionTitle}
+                        </h1>
+                        <span className="text-xs text-neutral-400 font-light tracking-wide">
+                          {categoryArticles.length}{' '}
+                          {siteLang === 'en'
+                            ? categoryArticles.length === 1
+                              ? 'material'
+                              : 'materials'
+                            : categoryArticles.length === 1
+                            ? 'матеріал'
+                            : [2, 3, 4].includes(categoryArticles.length % 10) &&
+                              ![12, 13, 14].includes(categoryArticles.length % 100)
+                            ? 'матеріали'
+                            : 'матеріалів'}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleSelectSection(null)}
+                        className="text-xs text-neutral-500 hover:text-black transition-colors cursor-pointer underline underline-offset-4"
+                      >
+                        {siteLang === 'en' ? 'All materials' : 'Всі матеріали'}
+                      </button>
+                    </div>
+
+                    {isLoading ? (
+                      <div className="py-24 text-center">
+                        <div className="inline-block w-5 h-5 border-2 border-neutral-300 border-t-black rounded-full animate-spin" />
+                      </div>
+                    ) : categoryArticles.length === 0 ? (
+                      <div className="py-24 text-center max-w-md mx-auto">
+                        <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-3">
+                          {siteLang === 'en'
+                            ? 'No articles published in this category yet.'
+                            : 'У цій рубриці наразі немає опублікованих статей.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSection(null)}
+                          className="text-xs uppercase tracking-widest text-black underline underline-offset-4 hover:opacity-70 transition-opacity cursor-pointer"
+                        >
+                          {siteLang === 'en' ? 'Return to all materials' : 'Повернутися до всіх матеріалів'}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-4 sm:space-y-6">
+                          {/* Ряд 1: 2 горизонтальні фото (16:9) */}
+                          {catRow1.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+                              {catRow1.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="16/9"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 2: 3 вертикальні фото (3:4) */}
+                          {catRow2.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 lg:gap-5">
+                              {catRow2.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="3/4"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 3: 2 горизонтальні фото (16:9) */}
+                          {catRow3.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+                              {catRow3.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="16/9"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 4: 3 вертикальні фото (3:4) */}
+                          {catRow4.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 lg:gap-5">
+                              {catRow4.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="3/4"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Нумерація сторінок (якщо статей у цій рубриці більше 10) */}
+                        {totalCategoryPages > 1 && (
+                          <nav
+                            aria-label="Нумерація сторінок"
+                            className="mt-12 sm:mt-16 pt-8 border-t border-neutral-100 flex items-center justify-center gap-2 sm:gap-3"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCategoryPage(safePage - 1)}
+                              disabled={safePage <= 1}
+                              aria-label="Попередня сторінка"
+                              className={`px-3 py-1.5 text-xs sm:text-sm tracking-wider transition-colors cursor-pointer focus:outline-none ${
+                                safePage <= 1
+                                  ? 'text-neutral-300 cursor-not-allowed'
+                                  : 'text-neutral-600 hover:text-black'
+                              }`}
+                            >
+                              ←
+                            </button>
+
+                            {Array.from({ length: totalCategoryPages }, (_, i) => i + 1).map((p) => {
+                              const isCurrent = p === safePage;
+                              return (
+                                <button
+                                  key={`cat-page-${p}`}
+                                  type="button"
+                                  onClick={() => handleSelectCategoryPage(p)}
+                                  aria-current={isCurrent ? 'page' : undefined}
+                                  className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-xs sm:text-sm transition-all duration-200 cursor-pointer focus:outline-none ${
+                                    isCurrent
+                                      ? 'bg-black text-white font-medium shadow-xs'
+                                      : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              );
+                            })}
+
+                            <button
+                              type="button"
+                              onClick={() => handleSelectCategoryPage(safePage + 1)}
+                              disabled={safePage >= totalCategoryPages}
+                              aria-label="Наступна сторінка"
+                              className={`px-3 py-1.5 text-xs sm:text-sm tracking-wider transition-colors cursor-pointer focus:outline-none ${
+                                safePage >= totalCategoryPages
+                                  ? 'text-neutral-300 cursor-not-allowed'
+                                  : 'text-neutral-600 hover:text-black'
+                              }`}
+                            >
+                              →
+                            </button>
+                          </nav>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
           ) : (
             <div className="w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
               {/* Індикатор активного фільтра пошуку на головній */}
@@ -768,17 +1143,26 @@ export default function App() {
                           );
                         })}
 
-                        {/* Кнопка "Показати більше" (завантажує наступні 10 статей) */}
+                        {/* Мінімалістична функція "Показати більше" (завантажує наступні 10 статей) */}
                         {publishedArticles.length > visibleCount && (
-                          <div className="pt-8 sm:pt-12 pb-4 text-center">
+                          <div className="pt-10 sm:pt-14 pb-4 flex flex-col items-center justify-center">
                             <button
                               type="button"
                               onClick={() => setVisibleCount((prev) => prev + 10)}
-                              className="px-8 py-3.5 bg-black hover:bg-neutral-800 text-white text-xs sm:text-sm font-sans tracking-widest uppercase rounded-full transition-all duration-300 shadow-sm hover:shadow-md cursor-pointer inline-flex items-center gap-2 group"
+                              className="group relative inline-flex items-center gap-2.5 py-2 px-1 text-xs sm:text-[13px] tracking-[0.2em] uppercase font-light text-neutral-500 hover:text-black transition-colors duration-300 cursor-pointer focus:outline-none"
+                              aria-label={siteLang === 'en' ? 'Show more articles' : 'Показати більше статей'}
                             >
                               <span>{siteLang === 'en' ? 'Show more' : 'Показати більше'}</span>
-                              <span className="text-neutral-400 group-hover:translate-y-0.5 transition-transform">↓</span>
+                              <span className="text-neutral-400 group-hover:text-black group-hover:translate-y-0.5 transition-all duration-300 text-sm">
+                                ↓
+                              </span>
+                              {/* Тонка мінімалістична лінія знизу, що темнішає при наведенні */}
+                              <span className="absolute bottom-0 left-0 w-full h-[1px] bg-neutral-200 group-hover:bg-black transition-colors duration-300" />
                             </button>
+                            <span className="mt-2 text-[11px] text-neutral-400 font-light tracking-wide">
+                              {Math.min(visibleCount, publishedArticles.length)} {siteLang === 'en' ? 'of' : 'з'}{' '}
+                              {publishedArticles.length}
+                            </span>
                           </div>
                         )}
                       </>

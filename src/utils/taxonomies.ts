@@ -4,6 +4,9 @@ export const TAXONOMIES_STORAGE_KEY = 'the_impart_taxonomies_v1';
 
 export const DEFAULT_TAXONOMIES: TaxonomiesData = {
   categories: [
+    { id: 'cat-news', name: 'Новини', nameEn: 'News' },
+    { id: 'cat-articles', name: 'Статті', nameEn: 'Articles' },
+    { id: 'cat-reviews', name: 'Огляди', nameEn: 'Reviews' },
     { id: 'cat-1', name: 'Філософія', nameEn: 'Philosophy' },
     { id: 'cat-2', name: 'Архітектура', nameEn: 'Architecture' },
     { id: 'cat-3', name: 'Естетика', nameEn: 'Aesthetics' },
@@ -33,6 +36,17 @@ export function getStoredTaxonomies(): TaxonomiesData {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.categories) && Array.isArray(parsed.topics)) {
+        // Забезпечуємо наявність обов'язкових розділів
+        const existingNames = new Set(parsed.categories.map((c: CategoryItem) => c.name.toLowerCase()));
+        const toAdd = DEFAULT_TAXONOMIES.categories.filter((c) => !existingNames.has(c.name.toLowerCase()));
+        if (toAdd.length > 0) {
+          const merged = {
+            ...parsed,
+            categories: [...toAdd, ...parsed.categories],
+          };
+          saveStoredTaxonomies(merged);
+          return merged;
+        }
         return parsed;
       }
     }
