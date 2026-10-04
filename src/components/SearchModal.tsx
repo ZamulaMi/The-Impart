@@ -85,18 +85,32 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     const title = (isEn ? article.titleEn : article.title) || '';
     const excerpt = (isEn ? article.excerptEn : article.excerpt) || '';
     const content = (isEn ? article.contentEn : article.content) || '';
-    const category = (isEn ? (article.categoryEn || article.category) : article.category) || '';
+    const categories = (
+      isEn
+        ? (article.categoriesEn && article.categoriesEn.length > 0
+            ? article.categoriesEn
+            : (article.categoryEn ? [article.categoryEn] : (article.categories || [article.category])))
+        : (article.categories && article.categories.length > 0
+            ? article.categories
+            : (article.category ? [article.category] : []))
+    ).filter(Boolean).join(' ');
+    const topics = (
+      isEn
+        ? (article.topicsEn && article.topicsEn.length > 0 ? article.topicsEn : article.topics || [])
+        : (article.topics || [])
+    ).join(' ');
 
     return (
       title.toLowerCase().includes(cleanQuery) ||
       excerpt.toLowerCase().includes(cleanQuery) ||
       content.toLowerCase().includes(cleanQuery) ||
-      category.toLowerCase().includes(cleanQuery)
+      categories.toLowerCase().includes(cleanQuery) ||
+      topics.toLowerCase().includes(cleanQuery)
     );
   });
 
   const handleOpenAll = () => {
-    if (matchingArticles.length > 0) {
+    if (cleanQuery) {
       onShowAllSearchResults(cleanQuery, matchingArticles);
       onClose();
     }
@@ -117,54 +131,54 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     >
       {/* 
         Верхня панель модального вікна:
-        Використовує контейнер ідентичної ширини та відступів,
-        а хрестик вирівняно точно над круглим колом лінзи лупи.
+        Використовує контейнер ідентичної ширини та відступів до шапки
       */}
       <header className="w-full bg-transparent py-3.5 sm:py-4">
-        <div className="w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
+        <div className="w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto flex items-center justify-between min-h-[38px]">
           <div className="overflow-hidden py-0.5 -my-0.5">
             <span
-              className="block text-xl sm:text-2xl font-medium tracking-tight text-black/30 select-none cursor-default"
+              className="block text-xl sm:text-2xl font-medium tracking-tight text-black/40 select-none cursor-default"
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
               The Impart
             </span>
           </div>
 
-          {/* Кнопка-хрестик: зсунута трохи лівіше, щоб бути строго над колом лупи */}
+          {/* Кнопка-хрестик: вирівняна ідентично до кнопки пошуку у шапці */}
           <button
             type="button"
             onClick={onClose}
             aria-label="Закрити пошук"
-            className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5 -translate-x-[2.5px]"
+            className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-10 h-10 -mr-2"
           >
-            <X className="w-5 h-5 stroke-[1.75]" />
+            <X className="w-5 h-5 stroke-[1.8]" />
           </button>
         </div>
       </header>
 
       {/* Центральна зона пошуку (єдиний плавний скрол без подвійного скролу) */}
-      <div className="flex-1 w-full max-w-2xl mx-auto px-6 sm:px-8 flex flex-col justify-start pt-4 sm:pt-12 pb-12 overflow-y-auto">
+      <div className="flex-1 w-full max-w-2xl mx-auto px-4 sm:px-8 flex flex-col justify-start pt-4 sm:pt-10 pb-12 overflow-y-auto">
         {/* Поле вводу по центру з плавною анімацією */}
         <div
           className={`w-full transition-all duration-350 ease-out ${
             isAnimateIn ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
           }`}
         >
-          <div className="w-full relative flex items-center border-b-2 border-neutral-900 pb-3 transition-colors">
-            <Search className="w-6 h-6 text-neutral-400 mr-3.5 shrink-0 stroke-[1.75]" />
+          <div className="w-full relative flex items-center border-b-2 border-neutral-900 pb-2.5 sm:pb-3 transition-colors">
+            <Search className="w-5 h-5 sm:w-6 sm:h-6 text-neutral-400 mr-2.5 sm:mr-3.5 shrink-0 stroke-[1.75]" />
             <input
               ref={inputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && matchingArticles.length > 0) {
+                if (e.key === 'Enter' && cleanQuery) {
+                  e.preventDefault();
                   handleOpenAll();
                 }
               }}
               placeholder={isEn ? 'Search articles, thoughts, topics...' : 'Пошук за назвою, описом або текстом...'}
-              className="w-full text-xl sm:text-2xl md:text-3xl font-serif text-black placeholder:text-neutral-300 placeholder:font-serif focus:outline-none bg-transparent leading-relaxed"
+              className="w-full text-lg sm:text-2xl md:text-3xl font-serif text-black placeholder:text-neutral-300 placeholder:font-serif focus:outline-none bg-transparent leading-relaxed"
             />
             {query && (
               <button
@@ -192,9 +206,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
         {/* Результати пошуку */}
         {cleanQuery && (
-          <div className="w-full mt-8 space-y-3 animate-fade-in">
+          <div className="w-full mt-6 sm:mt-8 space-y-3 animate-fade-in">
             {/* Панель з кількістю та кнопкою "Відкрити всі результати" */}
-            <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-neutral-100 gap-2.5">
               <span className="text-xs uppercase tracking-wider text-neutral-500 font-sans">
                 {isEn
                   ? `Found ${matchingArticles.length} ${matchingArticles.length === 1 ? 'article' : 'articles'}`
@@ -205,9 +219,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
                 <button
                   type="button"
                   onClick={handleOpenAll}
-                  className="inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-medium text-black hover:text-neutral-600 transition-colors cursor-pointer group"
+                  className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs uppercase tracking-wider font-semibold text-black hover:text-neutral-700 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 px-3 py-1.5 rounded-md transition-colors cursor-pointer group"
                 >
-                  <span>{isEn ? 'View all results on main' : 'Відкрити всі знайдені статті'}</span>
+                  <span>{isEn ? 'Open all found articles' : 'Відкрити всі знайдені статті'}</span>
                   <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                 </button>
               )}

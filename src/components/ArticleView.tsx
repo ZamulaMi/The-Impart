@@ -65,7 +65,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
   };
 
   return (
-    <article className="max-w-3xl mx-auto px-6 sm:px-12 py-10 sm:py-16">
+    <article className="w-[92%] sm:w-[90%] md:max-w-3xl mx-auto py-8 sm:py-16">
       {/* Верхня навігація, індикатор прихованості та кнопка копіювання посилання */}
       <div className="flex items-center justify-between mb-8 sm:mb-10">
         <button

@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
-import { Search, X } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, X, Menu, ChevronRight } from 'lucide-react';
 import { Article, SiteLanguage, SiteSocialLinks, TaxonomiesData } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
+import { RubricsModal } from './components/RubricsModal';
 import { formatTimeAgoOrDate } from './utils/date';
 import { getStoredTaxonomies, saveStoredTaxonomies } from './utils/taxonomies';
 import {
@@ -135,19 +136,19 @@ function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect 
   // Класи пропорцій для фото:
   // - 26/10.5: для головної статті першого ряду
   // - 16/9: для 2 горизонтальних фото
-  // - 3/4: для 3 вертикальних фото
+  // - 3/4: для 3 вертикальних фото (на мобільних 16/10 для комфорту)
   const aspectClass =
     aspectRatio === '26/10.5'
-      ? 'w-full aspect-[16/9] sm:aspect-[26/10.5] min-h-[260px] sm:min-h-[340px] md:min-h-[390px]'
+      ? 'w-full aspect-[16/10] sm:aspect-[21/9] md:aspect-[26/10.5] min-h-[240px] sm:min-h-[340px] md:min-h-[390px]'
       : aspectRatio === '16/9'
-      ? 'w-full aspect-[16/10] sm:aspect-[16/9]'
-      : 'w-full aspect-[4/5] sm:aspect-[3/4]';
+      ? 'w-full aspect-[16/10] sm:aspect-[16/9] min-h-[190px]'
+      : 'w-full aspect-[16/10] sm:aspect-[4/5] md:aspect-[3/4] min-h-[190px]';
 
   const titleClass =
     aspectRatio === '26/10.5'
-      ? 'text-2xl sm:text-3xl lg:text-4xl'
+      ? 'text-xl sm:text-2xl md:text-3xl lg:text-4xl'
       : aspectRatio === '16/9'
-      ? 'text-lg sm:text-xl md:text-2xl line-clamp-3'
+      ? 'text-base sm:text-lg md:text-xl lg:text-2xl line-clamp-3'
       : 'text-base sm:text-lg lg:text-xl line-clamp-3';
 
   return (
@@ -156,7 +157,6 @@ function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect 
         onSelect(article.id);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }}
-      style={aspectRatio === '26/10.5' ? { aspectRatio: '26 / 10.5' } : undefined}
       className={`group relative cursor-pointer overflow-hidden rounded-xl bg-neutral-900 shadow-md hover:shadow-xl transition-all duration-500 flex flex-col justify-end ${aspectClass}`}
     >
       {/* Фонове фото */}
@@ -178,7 +178,7 @@ function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect 
       {/* Контент поверх фото */}
       <div
         className={`relative z-10 text-white w-full ${
-          isHero ? 'p-6 sm:p-10 md:p-12 max-w-4xl' : 'p-5 sm:p-6 md:p-7'
+          isHero ? 'p-5 sm:p-8 md:p-10 lg:p-12 max-w-4xl' : 'p-4 sm:p-5 md:p-6'
         }`}
       >
         {/* Рубрика та динамічний час */}
@@ -280,20 +280,54 @@ export default function App() {
     return isNaN(pg) || pg < 1 ? 1 : pg;
   });
 
-  // Стан пошуку
+  // Стан пошуку та мобільного меню
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState<boolean>(false);
+
+  // Блокування скролу та закриття меню по клавіші Escape
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') setIsMobileMenuOpen(false);
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => {
+        document.body.style.overflow = '';
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [isMobileMenuOpen]);
+
   const [activeSearchFilter, setActiveSearchFilter] = useState<{
     query: string;
     articleIds: string[];
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window === 'undefined') return null;
+    const params = new URLSearchParams(window.location.search);
+    const q = params.get('search');
+    if (q && q.trim()) {
+      return { query: q.trim(), articleIds: [] };
+    }
+    return null;
+  });
 
-  // Кількість статей у стрічці (спочатку 10, по +10 при "показати більше")
+  // Поточна сторінка для пагінації у результатах пошуку (по 10 статей на сторінку)
+  const [searchPage, setSearchPage] = useState<number>(() => {
+    if (typeof window === 'undefined') return 1;
+    const params = new URLSearchParams(window.location.search);
+    const pg = parseInt(params.get('page') || '1', 10);
+    return isNaN(pg) || pg < 1 ? 1 : pg;
+  });
+
+
+  // Кількість статей у стрічці головної сторінки (спочатку 10, по +10 при "показати більше")
   const [visibleCount, setVisibleCount] = useState<number>(10);
 
-  // Скидаємо лічильник статей при зміні мови або фільтра пошуку
+  // Скидаємо лічильник статей головної при зміні мови
   useEffect(() => {
     setVisibleCount(10);
-  }, [siteLang, activeSearchFilter]);
+  }, [siteLang]);
 
   const handleSetLang = (lang: SiteLanguage) => {
     setSiteLang(lang);
@@ -434,7 +468,7 @@ export default function App() {
     fetchSocialLinksFromDb();
   }, []);
 
-  // Синхронізація з навігацією браузера
+  // Синхронізація з навігацією браузера (URL, popstate, hashchange)
   useEffect(() => {
     const handleLocationChange = () => {
       const path = window.location.pathname;
@@ -443,21 +477,34 @@ export default function App() {
       if (path.includes('/admin') || hash === '#admin' || search.includes('admin')) {
         setCurrentRoute('admin');
         setSelectedArticleId(null);
+        return;
+      }
+
+      setCurrentRoute('main');
+      const params = new URLSearchParams(search);
+      const artParam = params.get('article') || (hash.startsWith('#article-') ? hash.replace('#article-', '') : null);
+      const secParam = params.get('section') as HeaderSection | null;
+      const srchParam = params.get('search');
+      const pgParam = parseInt(params.get('page') || '1', 10);
+      const safePg = isNaN(pgParam) || pgParam < 1 ? 1 : pgParam;
+
+      if (artParam) {
+        setSelectedArticleId(artParam);
       } else {
-        setCurrentRoute('main');
-        const params = new URLSearchParams(search);
-        const artParam = params.get('article') || (hash.startsWith('#article-') ? hash.replace('#article-', '') : null);
-        setSelectedArticleId(artParam || null);
-        const secParam = params.get('section') as HeaderSection | null;
-        if (secParam && ['news', 'articles', 'reviews'].includes(secParam)) {
-          setActiveCategorySection(secParam);
-        } else {
-          setActiveCategorySection(null);
-        }
-        const pgParam = parseInt(params.get('page') || '1', 10);
-        setCategoryPage(isNaN(pgParam) || pgParam < 1 ? 1 : pgParam);
-        fetchArticlesFromDb();
-        fetchSocialLinksFromDb();
+        setSelectedArticleId(null);
+      }
+
+      if (srchParam && srchParam.trim()) {
+        setActiveSearchFilter({ query: srchParam.trim(), articleIds: [] });
+        setSearchPage(safePg);
+        setActiveCategorySection(null);
+      } else if (secParam && ['news', 'articles', 'reviews'].includes(secParam)) {
+        setActiveSearchFilter(null);
+        setActiveCategorySection(secParam);
+        setCategoryPage(safePg);
+      } else {
+        setActiveSearchFilter(null);
+        setActiveCategorySection(null);
       }
     };
 
@@ -513,14 +560,51 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleSelectSearchPage = (pageNumber: number) => {
+    setSearchPage(pageNumber);
+    if (activeSearchFilter) {
+      window.history.pushState(
+        null,
+        '',
+        `?search=${encodeURIComponent(activeSearchFilter.query)}${pageNumber > 1 ? `&page=${pageNumber}` : ''}`
+      );
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleShowAllSearchResults = (query: string, results: Article[]) => {
+    setSelectedArticleId(null);
+    setActiveCategorySection(null);
+    setSearchPage(1);
+    setActiveSearchFilter({
+      query,
+      articleIds: results.map((r) => r.id),
+    });
+    window.history.pushState(null, '', `?search=${encodeURIComponent(query)}`);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleResetSearch = () => {
+    setActiveSearchFilter(null);
+    setSearchPage(1);
+    window.history.pushState(null, '', window.location.pathname);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleSelectArticle = (id: string | null) => {
     if (id) {
       window.history.pushState(null, '', `?article=${encodeURIComponent(id)}`);
       setSelectedArticleId(id);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
-      // Якщо повернулися зі статті, відновлюємо URL розділу (якщо такий був обраний) або головної
-      if (activeCategorySection) {
+      // Якщо повернулися зі статті, відновлюємо URL розділу/пошуку або головної
+      if (activeSearchFilter) {
+        window.history.pushState(
+          null,
+          '',
+          `?search=${encodeURIComponent(activeSearchFilter.query)}${searchPage > 1 ? `&page=${searchPage}` : ''}`
+        );
+      } else if (activeCategorySection) {
         window.history.pushState(
           null,
           '',
@@ -626,10 +710,40 @@ export default function App() {
     return a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
   });
 
-  // Враховуємо активний фільтр пошуку (якщо користувач обрав "відкрити всі знайдені статті")
-  const publishedArticles = activeSearchFilter
-    ? basePublishedArticles.filter((a) => activeSearchFilter.articleIds.includes(a.id))
-    : basePublishedArticles;
+  // Статті для результатів пошуку (знайдені статті за активним запитом)
+  const searchResultsArticles = useMemo(() => {
+    if (!activeSearchFilter) return [];
+    const q = activeSearchFilter.query.trim().toLowerCase();
+    return basePublishedArticles.filter((article) => {
+      if (activeSearchFilter.articleIds.length > 0 && activeSearchFilter.articleIds.includes(article.id)) {
+        return true;
+      }
+      const title = (siteLang === 'en' ? article.titleEn : article.title) || '';
+      const excerpt = (siteLang === 'en' ? article.excerptEn : article.excerpt) || '';
+      const content = (siteLang === 'en' ? article.contentEn : article.content) || '';
+      const cats = (
+        siteLang === 'en'
+          ? (article.categoriesEn && article.categoriesEn.length > 0
+              ? article.categoriesEn
+              : (article.categoryEn ? [article.categoryEn] : (article.categories || [article.category])))
+          : (article.categories && article.categories.length > 0
+              ? article.categories
+              : (article.category ? [article.category] : []))
+      ).filter(Boolean).join(' ');
+      const tops = (
+        siteLang === 'en'
+          ? (article.topicsEn && article.topicsEn.length > 0 ? article.topicsEn : article.topics || [])
+          : (article.topics || [])
+      ).join(' ');
+      return (
+        title.toLowerCase().includes(q) ||
+        excerpt.toLowerCase().includes(q) ||
+        content.toLowerCase().includes(q) ||
+        cats.toLowerCase().includes(q) ||
+        tops.toLowerCase().includes(q)
+      );
+    });
+  }, [activeSearchFilter, basePublishedArticles, siteLang]);
 
   const selectedArticle = articles.find((a) => a.id === selectedArticleId);
 
@@ -644,51 +758,81 @@ export default function App() {
         onSelectArticle={(id) => {
           handleSelectArticle(id);
         }}
-        onShowAllSearchResults={(query, results) => {
-          handleSelectArticle(null);
-          setActiveSearchFilter({
-            query,
-            articleIds: results.map((r) => r.id),
-          });
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }}
+        onShowAllSearchResults={handleShowAllSearchResults}
       />
 
-      {/* Шапка (Header) - пропорція 26:34 (відступи по 4 одиниці зліва та справа, межі збігаються з фото) */}
-      <header className="w-full bg-white py-3.5 sm:py-4">
-        <div className="relative w-[calc(26/34*100%)] mx-auto flex items-center justify-between">
-          {/* Контейнер з overflow-hidden створює невидиму межу пустоти, з якої плавно виїжджає назва (на лівій межі) */}
-          <div className="overflow-hidden py-0.5 -my-0.5 z-10">
+      {/* Шапка (Header) - адаптивна: на мобільних згорнутий вибір рубрик (кнопка зліва, назва по центру, пошук справа) */}
+      <header className="w-full bg-white/95 backdrop-blur-md sticky top-0 z-40 py-3.5 sm:py-4 border-b border-neutral-100/60 transition-all">
+        <div className="relative w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto flex items-center justify-between min-h-[38px]">
+          {/* Ліва сторона:
+              - На мобільних (< md): кнопка виклику меню рубрик
+              - На десктопі (>= md): логотип The Impart
+          */}
+          <div className="flex items-center z-20">
+            {/* Кнопка виклику меню рубрик на мобільному */}
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              aria-label="Відкрити меню рубрик"
+              className="md:hidden flex items-center justify-center w-10 h-10 -ml-2 text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none"
+            >
+              <Menu className="w-5 h-5 stroke-[2]" />
+            </button>
+
+            {/* Десктопний логотип (на лівій межі) */}
+            <div className="hidden md:block overflow-hidden py-0.5 -my-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  handleSelectSection(null);
+                  setActiveSearchFilter(null);
+                }}
+                aria-label="The Impart — Головна сторінка"
+                className="animate-title-slide-down block text-xl sm:text-2xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-left cursor-pointer focus:outline-none"
+                style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+              >
+                The Impart
+              </button>
+            </div>
+          </div>
+
+          {/* Центр:
+              - На мобільних: назва сайту The Impart строго по центру
+              - На десктопі: рубрики (Новини / Статті / Огляди) з жирнішим шрифтом
+          */}
+          {/* Мобільний логотип по центру */}
+          <div className="md:hidden absolute left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
             <button
               type="button"
               onClick={() => {
                 handleSelectSection(null);
                 setActiveSearchFilter(null);
+                setIsMobileMenuOpen(false);
               }}
               aria-label="The Impart — Головна сторінка"
-              className="animate-title-slide-down block text-xl sm:text-2xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-left cursor-pointer focus:outline-none"
+              className="block text-xl font-medium tracking-tight text-black hover:opacity-75 transition-opacity select-none text-center cursor-pointer focus:outline-none whitespace-nowrap"
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
               The Impart
             </button>
           </div>
 
-          {/* Розділи сайту (Новини / Статті / Огляди) — строго по центру всього header */}
+          {/* Десктопний вибір рубрик (Новини / Статті / Огляди) по центру з жирнішим шрифтом */}
           <nav
             aria-label="Розділи сайту"
-            className="absolute left-1/2 -translate-x-1/2 flex items-center gap-4 sm:gap-7 md:gap-9 z-10 pointer-events-auto"
+            className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-6 lg:gap-9 z-10 pointer-events-auto"
           >
             {NAV_SECTIONS.map((sec) => {
-              const isActive = activeCategorySection === sec.id && !selectedArticleId;
+              const isActive = activeCategorySection === sec.id && !selectedArticleId && !activeSearchFilter;
               return (
                 <button
                   key={sec.id}
                   type="button"
                   onClick={() => handleSelectSection(sec.id)}
-                  className={`group relative py-1 text-xs sm:text-sm md:text-[15px] tracking-wide transition-colors duration-250 cursor-pointer focus:outline-none ${
+                  className={`group relative py-1 text-sm md:text-[15px] transition-colors duration-250 cursor-pointer focus:outline-none ${
                     isActive
-                      ? 'text-black font-medium'
-                      : 'text-neutral-500 hover:text-black font-normal'
+                      ? 'text-black font-bold tracking-normal'
+                      : 'text-neutral-800 hover:text-black font-semibold tracking-normal'
                   }`}
                 >
                   <span className="relative z-10 transition-transform duration-200 inline-block group-hover:-translate-y-[0.5px]">
@@ -696,7 +840,7 @@ export default function App() {
                   </span>
                   {/* Мінімалістична лінія-підкреслення з плавною анімацією розширення */}
                   <span
-                    className={`absolute bottom-0 left-0 h-[1.5px] bg-black transition-all duration-300 ease-out ${
+                    className={`absolute bottom-0 left-0 h-[2px] bg-black transition-all duration-300 ease-out ${
                       isActive ? 'w-full' : 'w-0 group-hover:w-full'
                     }`}
                   />
@@ -705,19 +849,32 @@ export default function App() {
             })}
           </nav>
 
-          {/* Іконка пошуку (на правій межі) */}
-          <div className="z-10 flex items-center justify-end">
+          {/* Права сторона: кнопка пошуку (і на мобільних, і на десктопі) */}
+          <div className="z-20 flex items-center justify-end">
             <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
               aria-label="Пошук"
-              className="text-black hover:opacity-60 transition-opacity cursor-pointer focus:outline-none flex items-center justify-center p-0.5"
+              className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-10 h-10 -mr-2"
             >
-              <Search className="w-5 h-5 stroke-[1.75]" />
+              <Search className="w-5 h-5 stroke-[1.8]" />
             </button>
           </div>
         </div>
       </header>
+
+      {/* Модальне вікно вибору рубрик: на весь екран, напівпрозоре з розмиттям, хрестик строго над кнопкою меню */}
+      <RubricsModal
+        isOpen={isMobileMenuOpen}
+        onClose={() => setIsMobileMenuOpen(false)}
+        activeSection={activeCategorySection}
+        onSelectSection={(sec) => {
+          handleSelectSection(sec);
+        }}
+        siteLang={siteLang}
+        onSwitchLang={handleSetLang}
+        onOpenSearch={() => setIsSearchOpen(true)}
+      />
 
       {/* Центральна частина (Body) зі статтями */}
       <main className="flex-1 flex flex-col justify-between">
@@ -729,11 +886,212 @@ export default function App() {
               onBack={() => handleSelectArticle(null)}
               onSwitchLang={handleSetLang}
             />
-          ) : activeCategorySection ? (
-            /* Сторінка обраної рубрики (Новини / Статті / Обзори) */
-            <div className="w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
+          ) : activeSearchFilter ? (
+            /* Сторінка результатів пошуку (з пагінацією по 10 статей, без "показати більше") */
+            <div className="w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
               {(() => {
-                const categoryArticles = publishedArticles.filter((article) =>
+                const totalSearchPages = Math.max(1, Math.ceil(searchResultsArticles.length / 10));
+                const safeSearchPage = Math.min(Math.max(1, searchPage), totalSearchPages);
+                const startIndex = (safeSearchPage - 1) * 10;
+                const pageSearchArticles = searchResultsArticles.slice(startIndex, startIndex + 10);
+
+                const sRow1 = pageSearchArticles.slice(0, 2);
+                const sRow2 = pageSearchArticles.slice(2, 5);
+                const sRow3 = pageSearchArticles.slice(5, 7);
+                const sRow4 = pageSearchArticles.slice(7, 10);
+
+                return (
+                  <div>
+                    {/* Заголовок результатів пошуку та кнопка скидання */}
+                    <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-neutral-100 gap-4">
+                      <div>
+                        <h1
+                          className="text-2xl sm:text-3xl font-medium tracking-tight text-black"
+                          style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
+                        >
+                          {siteLang === 'en' ? 'Search Results' : 'Результати пошуку'}
+                        </h1>
+                        <p className="text-xs sm:text-sm text-neutral-500 mt-1.5 flex flex-wrap items-center gap-2">
+                          <Search className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                          <span>
+                            {siteLang === 'en' ? 'Query:' : 'Запит:'}{' '}
+                            <strong className="text-black font-semibold">«{activeSearchFilter.query}»</strong>
+                          </span>
+                          <span className="text-neutral-300">•</span>
+                          <span>
+                            {siteLang === 'en'
+                              ? `${searchResultsArticles.length} ${
+                                  searchResultsArticles.length === 1 ? 'article found' : 'articles found'
+                                }`
+                              : `Знайдено матеріалів: ${searchResultsArticles.length}`}
+                          </span>
+                          {totalSearchPages > 1 && (
+                            <>
+                              <span className="text-neutral-300">•</span>
+                              <span>
+                                {siteLang === 'en'
+                                  ? `Page ${safeSearchPage} of ${totalSearchPages}`
+                                  : `Сторінка ${safeSearchPage} з ${totalSearchPages}`}
+                              </span>
+                            </>
+                          )}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleResetSearch}
+                        className="self-start sm:self-auto inline-flex items-center gap-1.5 text-xs uppercase tracking-wider text-neutral-600 hover:text-black bg-neutral-50 hover:bg-neutral-100 border border-neutral-200 px-3.5 py-2 rounded transition-colors cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        <span>{siteLang === 'en' ? 'Reset search' : 'Скинути пошук'}</span>
+                      </button>
+                    </div>
+
+                    {searchResultsArticles.length === 0 ? (
+                      <div className="py-20 text-center max-w-md mx-auto">
+                        <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-3">
+                          {siteLang === 'en'
+                            ? 'No articles match your search query.'
+                            : 'За вашим запитом не знайдено опублікованих статей.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleResetSearch}
+                          className="text-xs uppercase tracking-wider text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
+                        >
+                          {siteLang === 'en' ? 'Return to all articles' : 'Повернутися до всіх статей'}
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-4 sm:space-y-6">
+                          {/* Ряд 1: 2 горизонтальні фото (16:9) */}
+                          {sRow1.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+                              {sRow1.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="16/9"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 2: 3 вертикальні фото (3:4) */}
+                          {sRow2.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 lg:gap-5">
+                              {sRow2.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="3/4"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 3: 2 горизонтальні фото (16:9) */}
+                          {sRow3.length > 0 && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-5">
+                              {sRow3.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="16/9"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Ряд 4: 3 вертикальні фото (3:4) */}
+                          {sRow4.length > 0 && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 lg:gap-5">
+                              {sRow4.map((article) => (
+                                <ArticleCard
+                                  key={article.id}
+                                  article={article}
+                                  siteLang={siteLang}
+                                  aspectRatio="3/4"
+                                  onSelect={(id) => handleSelectArticle(id)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Пагінація сторінок результатів пошуку (перемикання сторінок як у рубриках) */}
+                        {totalSearchPages > 1 && (
+                          <nav
+                            aria-label="Нумерація сторінок результатів пошуку"
+                            className="mt-12 sm:mt-16 pt-8 border-t border-neutral-100 flex items-center justify-center gap-2 sm:gap-3"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSearchPage(safeSearchPage - 1)}
+                              disabled={safeSearchPage <= 1}
+                              aria-label="Попередня сторінка"
+                              className={`px-3 py-1.5 text-xs sm:text-sm tracking-wider transition-colors cursor-pointer focus:outline-none ${
+                                safeSearchPage <= 1
+                                  ? 'text-neutral-300 cursor-not-allowed'
+                                  : 'text-neutral-600 hover:text-black'
+                              }`}
+                            >
+                              ←
+                            </button>
+
+                            {Array.from({ length: totalSearchPages }, (_, i) => i + 1).map((p) => {
+                              const isCurrent = p === safeSearchPage;
+                              return (
+                                <button
+                                  key={`search-page-${p}`}
+                                  type="button"
+                                  onClick={() => handleSelectSearchPage(p)}
+                                  aria-current={isCurrent ? 'page' : undefined}
+                                  className={`w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-xs sm:text-sm transition-all duration-200 cursor-pointer focus:outline-none ${
+                                    isCurrent
+                                      ? 'bg-black text-white font-medium shadow-xs'
+                                      : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+                                  }`}
+                                >
+                                  {p}
+                                </button>
+                              );
+                            })}
+
+                            <button
+                              type="button"
+                              onClick={() => handleSelectSearchPage(safeSearchPage + 1)}
+                              disabled={safeSearchPage >= totalSearchPages}
+                              aria-label="Наступна сторінка"
+                              className={`px-3 py-1.5 text-xs sm:text-sm tracking-wider transition-colors cursor-pointer focus:outline-none ${
+                                safeSearchPage >= totalSearchPages
+                                  ? 'text-neutral-300 cursor-not-allowed'
+                                  : 'text-neutral-600 hover:text-black'
+                              }`}
+                            >
+                              →
+                            </button>
+                          </nav>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ) : activeCategorySection ? (
+            /* Сторінка обраної рубрики (Новини / Статті / Огляди) */
+            <div className="w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
+              {(() => {
+                const categoryArticles = basePublishedArticles.filter((article) =>
                   matchesHeaderSection(article, activeCategorySection)
                 );
                 const totalCategoryPages = Math.max(1, Math.ceil(categoryArticles.length / 10));
@@ -943,53 +1301,20 @@ export default function App() {
               })()}
             </div>
           ) : (
-            <div className="w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
-              {/* Індикатор активного фільтра пошуку на головній */}
-              {activeSearchFilter && (
-                <div className="mb-6 flex items-center justify-between bg-neutral-50 border border-neutral-200/80 px-4 py-2.5 rounded-lg animate-fade-in">
-                  <div className="flex items-center gap-2 text-xs sm:text-sm text-neutral-600">
-                    <Search className="w-4 h-4 text-neutral-400 shrink-0" />
-                    <span>
-                      {siteLang === 'en' ? 'Results for query:' : 'Результати за запитом:'}{' '}
-                      <strong className="text-black font-semibold">«{activeSearchFilter.query}»</strong>
-                    </span>
-                    <span className="text-neutral-400">({publishedArticles.length})</span>
-                  </div>
-
-                  <button
-                    onClick={() => setActiveSearchFilter(null)}
-                    className="text-xs uppercase tracking-wider text-neutral-500 hover:text-black flex items-center gap-1 transition-colors cursor-pointer"
-                  >
-                    <span>{siteLang === 'en' ? 'Reset search' : 'Скинути пошук'}</span>
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-
+            <div className="w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto pt-2 sm:pt-3.5 pb-10 sm:pb-14">
               {isLoading ? (
                 <div className="py-24 text-center">
                   <div className="inline-block w-5 h-5 border-2 border-neutral-300 border-t-black rounded-full animate-spin" />
                 </div>
-              ) : publishedArticles.length === 0 ? (
+              ) : basePublishedArticles.length === 0 ? (
                 <div className="py-24 text-center max-w-md mx-auto">
                   <p className="text-neutral-400 font-serif italic text-lg sm:text-xl mb-2">
-                    {activeSearchFilter
-                      ? siteLang === 'en'
-                        ? 'No articles match your search criteria.'
-                        : 'За вашим запитом не знайдено опублікованих статей.'
-                      : siteLang === 'en'
+                    {siteLang === 'en'
                       ? 'No articles published in English yet.'
                       : 'У базі даних наразі немає опублікованих статей.'}
                   </p>
                   <p className="text-xs text-neutral-400 font-sans">
-                    {activeSearchFilter ? (
-                      <button
-                        onClick={() => setActiveSearchFilter(null)}
-                        className="text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
-                      >
-                        {siteLang === 'en' ? 'Show all articles' : 'Показати всі матеріали'}
-                      </button>
-                    ) : siteLang === 'en' ? (
+                    {siteLang === 'en' ? (
                       <button
                         onClick={() => handleSetLang('ua')}
                         className="text-black underline underline-offset-4 cursor-pointer hover:opacity-75"
@@ -1004,7 +1329,7 @@ export default function App() {
               ) : (
                 <div className="space-y-4 sm:space-y-6">
                   {(() => {
-                    const visibleArticles = publishedArticles.slice(0, visibleCount);
+                    const visibleArticles = basePublishedArticles.slice(0, visibleCount);
 
                     // 1. Перші 10 статей мають чітку розмітку за вимогами:
                     // - Ряд 1: 1 велике фото 21:9
@@ -1153,25 +1478,25 @@ export default function App() {
                           );
                         })}
 
-                        {/* Мінімалістична функція "Показати більше" (завантажує наступні 10 статей) */}
-                        {publishedArticles.length > visibleCount && (
+                        {/* Ексклюзивна для головної сторінки функція "Показати більше" з виразним жирнішим шрифтом */}
+                        {basePublishedArticles.length > visibleCount && (
                           <div className="pt-10 sm:pt-14 pb-4 flex flex-col items-center justify-center">
                             <button
                               type="button"
                               onClick={() => setVisibleCount((prev) => prev + 10)}
-                              className="group relative inline-flex items-center gap-2.5 py-2 px-1 text-xs sm:text-[13px] tracking-[0.2em] uppercase font-light text-neutral-500 hover:text-black transition-colors duration-300 cursor-pointer focus:outline-none"
+                              className="group relative inline-flex items-center gap-2.5 py-2.5 px-3 text-xs sm:text-[13px] tracking-[0.16em] uppercase font-semibold text-neutral-800 hover:text-black transition-colors duration-300 cursor-pointer focus:outline-none"
                               aria-label={siteLang === 'en' ? 'Show more articles' : 'Показати більше статей'}
                             >
-                              <span>{siteLang === 'en' ? 'Show more' : 'Показати більше'}</span>
-                              <span className="text-neutral-400 group-hover:text-black group-hover:translate-y-0.5 transition-all duration-300 text-sm">
+                              <span className="font-semibold">{siteLang === 'en' ? 'Show more' : 'Показати більше'}</span>
+                              <span className="text-neutral-600 group-hover:text-black group-hover:translate-y-0.5 transition-all duration-300 text-sm font-bold">
                                 ↓
                               </span>
                               {/* Тонка мінімалістична лінія знизу, що темнішає при наведенні */}
-                              <span className="absolute bottom-0 left-0 w-full h-[1px] bg-neutral-200 group-hover:bg-black transition-colors duration-300" />
+                              <span className="absolute bottom-0 left-0 w-full h-[1.5px] bg-neutral-300 group-hover:bg-black transition-colors duration-300" />
                             </button>
-                            <span className="mt-2 text-[11px] text-neutral-400 font-light tracking-wide">
-                              {Math.min(visibleCount, publishedArticles.length)} {siteLang === 'en' ? 'of' : 'з'}{' '}
-                              {publishedArticles.length}
+                            <span className="mt-2 text-[11px] text-neutral-500 font-medium tracking-wide">
+                              {Math.min(visibleCount, basePublishedArticles.length)} {siteLang === 'en' ? 'of' : 'з'}{' '}
+                              {basePublishedArticles.length}
                             </span>
                           </div>
                         )}
@@ -1190,7 +1515,7 @@ export default function App() {
 
       {/* Футер */}
       <footer className="w-full bg-white py-10 sm:py-12 border-t border-neutral-100">
-        <div className="w-[calc(26/34*100%)] mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+        <div className="w-[92%] sm:w-[90%] md:w-[calc(26/34*100%)] mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-6">
           <div className="flex flex-col items-start">
             <span className="text-base sm:text-lg font-normal tracking-normal text-black font-sans select-none">
               The Impart

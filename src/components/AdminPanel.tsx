@@ -728,7 +728,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     : 'border-transparent text-neutral-400 hover:text-neutral-700'
                 }`}
               >
-                <span className="text-base">🇺🇦</span>
                 <span>Українська версія (основна)</span>
                 {editingArticle.published !== false ? (
                   <span className="w-2 h-2 rounded-full bg-emerald-500" title="Опубліковано на UA" />
@@ -746,7 +745,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                     : 'border-transparent text-neutral-400 hover:text-neutral-700'
                 }`}
               >
-                <span className="text-base">🇬🇧</span>
                 <span>English version</span>
                 {editingArticle.publishedEn ? (
                   <span className="w-2 h-2 rounded-full bg-emerald-500" title="Опубліковано на EN" />
@@ -841,7 +839,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="space-y-6 animate-fade-in">
                   <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                     <span className="text-xs uppercase tracking-wider font-medium text-black flex items-center gap-1.5">
-                      <span>🇺🇦</span> Український текст статті
+                      Український текст статті (UA)
                     </span>
                     <span className="text-xs text-neutral-400">Основна версія</span>
                   </div>
@@ -1171,7 +1169,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                 <div className="space-y-6 animate-fade-in">
                   <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                     <span className="text-xs uppercase tracking-wider font-medium text-black flex items-center gap-1.5">
-                      <span>🇬🇧</span> English Article Version
+                      English Article Version (EN)
                     </span>
                     {editingArticle.content && !editingArticle.contentEn && (
                       <button
@@ -1401,7 +1399,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onClick={() => setFormLangTab('en')}
                       className="text-black hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      <span>Перейти до редагування англійської версії 🇬🇧</span>
+                      <span>Перейти до редагування англійської версії</span>
                     </button>
                   ) : (
                     <button
@@ -1409,7 +1407,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       onClick={() => setFormLangTab('ua')}
                       className="text-black hover:underline cursor-pointer flex items-center gap-1"
                     >
-                      <span>Повернутися до української версії 🇺🇦</span>
+                      <span>Повернутися до української версії</span>
                     </button>
                   )}
                 </div>
@@ -1487,7 +1485,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       : 'bg-neutral-100 text-neutral-600 hover:text-emerald-700 hover:bg-emerald-50'
                   }`}
                 >
-                  <span>🇺🇦 Опубліковані UA</span>
+                  <span>Опубліковані UA</span>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                     filterStatus === 'published_ua' ? 'bg-emerald-800 text-white' : 'bg-neutral-200 text-neutral-600'
                   }`}>
@@ -1503,7 +1501,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       : 'bg-neutral-100 text-neutral-600 hover:text-blue-700 hover:bg-blue-50'
                   }`}
                 >
-                  <span>🇬🇧 Опубліковані EN</span>
+                  <span>Опубліковані EN</span>
                   <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
                     filterStatus === 'published_en' ? 'bg-blue-800 text-white' : 'bg-neutral-200 text-neutral-600'
                   }`}>
@@ -1592,11 +1590,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {isPubUa ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                                🇺🇦 UA: Live
+                                UA: Live
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
-                                🇺🇦 UA: Сховано
+                                UA: Сховано
                               </span>
                             )}
 
@@ -1604,15 +1602,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             {isPubEn ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                                🇬🇧 EN: Live
+                                EN: Live
                               </span>
                             ) : hasEn ? (
                               <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
-                                🇬🇧 EN: Чернетка
+                                EN: Чернетка
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] text-neutral-400 bg-neutral-100 px-1.5 py-0.5 rounded">
-                                🇬🇧 EN: Немає
+                                EN: Немає
                               </span>
                             )}
 
@@ -1689,7 +1687,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                             <div className="w-3.5 h-3.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
                           ) : (
                             <>
-                              <span className="text-[11px] font-medium">🇺🇦</span>
+                              <span className="text-[11px] font-semibold text-neutral-700">UA</span>
                               <span className="hidden lg:inline">{isPubUa ? 'Сховати' : 'Показати'}</span>
                             </>
                           )}
@@ -1715,7 +1713,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                               <div className="w-3.5 h-3.5 border-2 border-neutral-400 border-t-transparent rounded-full animate-spin" />
                             ) : (
                               <>
-                                <span className="text-[11px] font-medium">🇬🇧</span>
+                                <span className="text-[11px] font-semibold text-neutral-700">EN</span>
                                 <span className="hidden lg:inline">{isPubEn ? 'Hide' : 'Publish'}</span>
                               </>
                             )}

@@ -231,7 +231,6 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
                 : 'border-transparent text-neutral-400 hover:text-neutral-700'
             }`}
           >
-            <span>🇺🇦</span>
             <span>Українська версія (UA)</span>
           </button>
 
@@ -244,7 +243,6 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
                 : 'border-transparent text-neutral-400 hover:text-neutral-700'
             }`}
           >
-            <span>🇬🇧</span>
             <span>English version (EN)</span>
           </button>
         </div>
