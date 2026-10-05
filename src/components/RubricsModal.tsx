@@ -93,9 +93,10 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
 
           {/* По центру: назва сайту The Impart (слугує переходом на головну) */}
           <div className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
-            <button
-              type="button"
-              onClick={() => {
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
                 onSelectSection(null);
                 onClose();
               }}
@@ -104,7 +105,7 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
               The Impart
-            </button>
+            </a>
           </div>
 
           {/* Права сторона: кнопка швидкого переходу до пошуку, вирівняна з кнопкою пошуку в шапці */}
@@ -139,10 +140,11 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
             const isActive = activeSection === sec.id;
             const title = siteLang === 'en' ? sec.titleEn : sec.titleUa;
             return (
-              <button
+              <a
                 key={`modal_rubric_${sec.id}`}
-                type="button"
-                onClick={() => {
+                href={`/${sec.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
                   onSelectSection(sec.id);
                   onClose();
                 }}
@@ -162,7 +164,7 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
                     isActive ? 'w-3/4' : 'w-0 group-hover:w-3/4'
                   }`}
                 />
-              </button>
+              </a>
             );
           })}
         </nav>
