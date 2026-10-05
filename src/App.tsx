@@ -274,8 +274,34 @@ export default function App() {
     saveStoredTaxonomies(data);
   };
 
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [articles, setArticles] = useState<Article[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return false;
+          }
+        }
+      } catch (e) {}
+    }
+    return true;
+  });
 
   // Активний розділ у шапці: 'news' | 'articles' | 'reviews' | null (null = головна стрічка)
   const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => {
@@ -431,24 +457,6 @@ export default function App() {
   };
 
   const fetchArticlesFromDb = async () => {
-    // 1. Пряме завантаження статей із хмарної бази Neon
-    try {
-      const cloudArticles = await fetchArticlesFromCloud();
-      if (cloudArticles && Array.isArray(cloudArticles) && cloudArticles.length > 0) {
-        setArticles(cloudArticles);
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudArticles));
-        } catch (e) {
-          console.error(e);
-        }
-        setIsLoading(false);
-        return;
-      }
-    } catch (e) {
-      console.warn('Neon direct articles fetch notice:', e);
-    }
-
-    // 2. Резервне завантаження через /api/articles
     try {
       const res = await fetch(`/api/articles?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -456,25 +464,31 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setArticles(data);
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           } catch (e) {
             console.error(e);
           }
+          setIsLoading(false);
+          return;
         }
       }
     } catch (err) {
       console.warn('Backend unavailable, checking local storage:', err);
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY);
-        if (cached) {
-          setArticles(JSON.parse(cached));
+    }
+
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setArticles(parsed);
         }
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsLoading(false);
     }

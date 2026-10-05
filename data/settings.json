@@ -1,16 +1,16 @@
 {
   "ua": {
-    "telegram": "https://t.me/the_impart",
+    "telegram": "",
     "instagram": "https://instagram.com/the_impart",
     "x": "https://x.com/the_impart_ua",
     "youtube": "https://youtube.com/@the_impart_ua",
     "threads": "https://threads.net/@the_impart_ua"
   },
   "en": {
-    "telegram": "https://t.me/the_impart_en",
-    "instagram": "https://instagram.com/the_impart_en",
-    "x": "https://x.com/the_impart_en",
-    "youtube": "https://youtube.com/@the_impart_en",
-    "threads": "https://threads.net/@the_impart_en"
+    "telegram": "https://t.me",
+    "instagram": "https://instagram.com/the_impart",
+    "x": "https://x.com/the_impart_ua",
+    "youtube": "https://youtube.com/@the_impart_ua",
+    "threads": "https://threads.net/@the_impart_ua"
   }
 }

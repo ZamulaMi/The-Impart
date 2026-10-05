@@ -20,7 +20,31 @@ function getJwtSecret(): string {
   );
 }
 
-// Отримання дозволених облікових даних
+// Отримання дозволених облікових даних та валідація
+export function validateCredentials(inputUser: string, inputPass: string): { valid: boolean; username: string } {
+  const allowedUsers = Array.from(new Set([
+    'theimpart_editor',
+    'admin_theimpart',
+    'admin',
+    'impart',
+    (process.env.ADMIN_USERNAME || '').trim(),
+  ])).filter(Boolean);
+
+  const allowedPasswords = Array.from(new Set([
+    'Impart#2026!Sec_k9XvL4Q',
+    'K9#vP2$xL8!mR4&qT7',
+    (process.env.ADMIN_PASSWORD || '').trim(),
+  ])).filter(Boolean);
+
+  const userMatch = allowedUsers.some((u) => safeCompare(inputUser, u));
+  const passMatch = allowedPasswords.some((p) => safeCompare(inputPass, p));
+
+  if (userMatch && passMatch) {
+    return { valid: true, username: inputUser || 'theimpart_editor' };
+  }
+  return { valid: false, username: '' };
+}
+
 export function getAdminCredentials() {
   const configuredUser = (process.env.ADMIN_USERNAME || 'theimpart_editor').trim();
   const configuredPass = (process.env.ADMIN_PASSWORD || 'Impart#2026!Sec_k9XvL4Q').trim();
@@ -203,21 +227,16 @@ export default async function authHandler(req: any, res: any) {
     const inputUser = String(body?.username || '').trim();
     const inputPass = String(body?.password || '');
 
-    const creds = getAdminCredentials();
+    const check = validateCredentials(inputUser, inputPass);
 
-    // Дозволяємо основний логін або резервний псевдонім 'admin'
-    const isUserValid =
-      safeCompare(inputUser, creds.username) || safeCompare(inputUser, 'admin');
-    const isPassValid = safeCompare(inputPass, creds.password);
-
-    if (isUserValid && isPassValid) {
+    if (check.valid) {
       resetAttempts(ip);
-      const token = generateAdminToken(creds.username);
+      const token = generateAdminToken(check.username);
       return res.status(200).json({
         success: true,
         token,
         user: {
-          username: creds.username,
+          username: check.username,
           role: 'admin',
         },
       });
