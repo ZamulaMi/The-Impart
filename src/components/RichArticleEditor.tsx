@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { ContentRenderer } from './ContentRenderer';
 import { markdownToHtml } from '../utils/editorConverter';
+import { getAuthHeaders } from '../services/auth';
 
 interface RichArticleEditorProps {
   value: string;
@@ -576,7 +577,10 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
       try {
         const res = await fetch('/api/upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+          },
           body: JSON.stringify({ data: dataUrl, filename: file.name }),
         });
         if (res.ok) {

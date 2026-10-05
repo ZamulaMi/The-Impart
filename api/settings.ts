@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getNeonSql } from './articles';
+import { verifyAdminToken, extractToken } from './auth';
 
 export interface SocialLinksSet {
   telegram?: string;
@@ -90,6 +91,7 @@ async function initSettingsDb() {
   if (isSettingsTableInitialized) return;
   try {
     const sql = getNeonSql();
+    if (!sql) return;
     await sql`
       CREATE TABLE IF NOT EXISTS site_settings (
         key VARCHAR(100) PRIMARY KEY,
@@ -118,16 +120,18 @@ export async function getSocialLinks(): Promise<SiteSocialLinks> {
   try {
     await initSettingsDb();
     const sql = getNeonSql();
-    const rows = await sql`SELECT value FROM site_settings WHERE key = 'social_links' LIMIT 1;`;
-    if (rows && rows.length > 0 && rows[0].value) {
-      const parsed = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
-      const combined: SiteSocialLinks = {
-        ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(parsed.ua || {}) },
-        en: { ...DEFAULT_SOCIAL_LINKS.en, ...(parsed.en || {}) },
-      };
-      inMemorySocialLinks = combined;
-      writeSettingsToFile(combined);
-      return combined;
+    if (sql) {
+      const rows = await sql`SELECT value FROM site_settings WHERE key = 'social_links' LIMIT 1;`;
+      if (rows && rows.length > 0 && rows[0].value) {
+        const parsed = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
+        const combined: SiteSocialLinks = {
+          ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(parsed.ua || {}) },
+          en: { ...DEFAULT_SOCIAL_LINKS.en, ...(parsed.en || {}) },
+        };
+        inMemorySocialLinks = combined;
+        writeSettingsToFile(combined);
+        return combined;
+      }
     }
   } catch (err) {
     console.warn('Database query error in getSocialLinks, falling back to disk/memory:', err);
@@ -178,15 +182,16 @@ export async function saveSocialLinks(links: any): Promise<SiteSocialLinks> {
   try {
     await initSettingsDb();
     const sql = getNeonSql();
-    const jsonStr = JSON.stringify(cleaned);
-
-    await sql`
-      INSERT INTO site_settings (key, value, updated_at)
-      VALUES ('social_links', ${jsonStr}, CURRENT_TIMESTAMP)
-      ON CONFLICT (key) DO UPDATE
-      SET value = ${jsonStr}, updated_at = CURRENT_TIMESTAMP;
-    `;
-    console.log('Social links synced to PostgreSQL successfully.');
+    if (sql) {
+      const jsonStr = JSON.stringify(cleaned);
+      await sql`
+        INSERT INTO site_settings (key, value, updated_at)
+        VALUES ('social_links', ${jsonStr}, CURRENT_TIMESTAMP)
+        ON CONFLICT (key) DO UPDATE
+        SET value = ${jsonStr}, updated_at = CURRENT_TIMESTAMP;
+      `;
+      console.log('Social links synced to PostgreSQL successfully.');
+    }
   } catch (err) {
     console.warn('Postgres sync notice: settings saved to server disk, database update failed/delayed:', err);
   }
@@ -209,6 +214,11 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
+      const token = extractToken(req);
+      if (!verifyAdminToken(token)) {
+        return res.status(401).json({ error: 'Потрібна авторизація адміністратора для зміни налаштувань' });
+      }
+
       let body = req.body;
 
       if (typeof body === 'string') {

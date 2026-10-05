@@ -4,14 +4,16 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, X, Menu, ChevronRight } from 'lucide-react';
+import { Search, X, Menu, ChevronRight, Lock } from 'lucide-react';
 import { Article, SiteLanguage, SiteSocialLinks, TaxonomiesData } from './types';
 import { AdminPanel } from './components/AdminPanel';
+import { AdminLogin } from './components/AdminLogin';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
 import { RubricsModal } from './components/RubricsModal';
 import { formatTimeAgoOrDate } from './utils/date';
 import { getStoredTaxonomies, saveStoredTaxonomies } from './utils/taxonomies';
+import { getAuthToken, getAuthHeaders, verifyAdminSession, logoutAdmin } from './services/auth';
 import {
   fetchSocialLinksFromCloud,
   saveSocialLinksToCloud,
@@ -222,6 +224,18 @@ export default function App() {
       : 'main';
   });
 
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
+    return Boolean(getAuthToken());
+  });
+
+  useEffect(() => {
+    if (currentRoute === 'admin') {
+      verifyAdminSession().then((isValid) => {
+        setIsAdminAuthenticated(isValid);
+      });
+    }
+  }, [currentRoute]);
+
   const [siteLang, setSiteLang] = useState<SiteLanguage>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(LANG_STORAGE_KEY);
@@ -392,7 +406,11 @@ export default function App() {
     try {
       await fetch(`/api/settings?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(links),
       });
       savedSuccessfully = true;
@@ -631,7 +649,11 @@ export default function App() {
     try {
       await fetch(`/api/articles?_t=${Date.now()}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
         body: JSON.stringify(article),
       });
     } catch (e) {
@@ -664,6 +686,10 @@ export default function App() {
     try {
       await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
         method: 'DELETE',
+        headers: {
+          Accept: 'application/json',
+          ...getAuthHeaders(),
+        },
       });
     } catch (e) {
       // Резервний запит
@@ -683,14 +709,31 @@ export default function App() {
     }
   };
 
+  const handleAdminLogout = async () => {
+    await logoutAdmin();
+    setIsAdminAuthenticated(false);
+  };
+
   // Режим адмін-панелі
   if (currentRoute === 'admin') {
+    if (!isAdminAuthenticated) {
+      return (
+        <AdminLogin
+          onLoginSuccess={() => {
+            setIsAdminAuthenticated(true);
+          }}
+          onBackToSite={() => navigateTo('main')}
+        />
+      );
+    }
+
     return (
       <AdminPanel
         articles={articles}
         onSaveArticle={handleSaveArticle}
         onDeleteArticle={handleDeleteArticle}
         onExitAdmin={() => navigateTo('main')}
+        onLogout={handleAdminLogout}
         onViewArticleOnSite={(id) => navigateTo('main', id)}
         socialLinks={socialLinks}
         onSaveSocialLinks={handleSaveSocialLinks}
@@ -1634,9 +1677,19 @@ export default function App() {
               </button>
             </div>
 
-            <span className="text-xs text-neutral-400 font-sans">
-              © {new Date().getFullYear()} The Impart. All rights reserved.
-            </span>
+            <div className="flex items-center gap-3 text-xs text-neutral-400 font-sans">
+              <span>© {new Date().getFullYear()} The Impart. All rights reserved.</span>
+              <span className="text-neutral-300">•</span>
+              <button
+                type="button"
+                onClick={() => navigateTo('admin')}
+                className="hover:text-black transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
+                title="Редакційний вхід"
+              >
+                <Lock className="w-3 h-3 text-neutral-400" />
+                <span>Редакція</span>
+              </button>
+            </div>
           </div>
         </div>
       </footer>

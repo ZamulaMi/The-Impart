@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { neon } from '@neondatabase/serverless';
+import { verifyAdminToken, extractToken } from './auth';
 
 export interface Article {
   id: string;
@@ -147,10 +148,6 @@ if (!initialArticlesFromFile) {
   writeArticlesToFile(inMemoryArticles);
 }
 
-// Резервний рядок підключення до Neon
-const DEFAULT_NEON_URL =
-  'postgresql://neondb_owner:npg_YxGNIvz6CD1r@ep-dawn-dust-b7e8cria-pooler.c-13.us-east-1.aws.neon.tech/neondb?channel_binding=require&sslmode=require';
-
 // Очищення рядка підключення: автоматично витягує чистий postgresql://...
 export function cleanConnectionString(raw?: string): string | undefined {
   if (!raw) return undefined;
@@ -166,8 +163,8 @@ export function cleanConnectionString(raw?: string): string | undefined {
   return undefined;
 }
 
-// Отримання клієнта Neon
-export function getNeonSql() {
+// Отримання клієнта Neon (виключно зі змінних середовища)
+export function getNeonSql(): any | null {
   const candidateKeys = [
     'DATABASE_URL',
     'POSTGRES_URL',
@@ -197,7 +194,7 @@ export function getNeonSql() {
   }
 
   if (!connectionString) {
-    connectionString = DEFAULT_NEON_URL;
+    return null;
   }
 
   return neon(connectionString);
@@ -210,6 +207,7 @@ export async function initDb() {
 
   try {
     const sql = getNeonSql();
+    if (!sql) return;
     await sql`
       CREATE TABLE IF NOT EXISTS articles (
         id VARCHAR(255) PRIMARY KEY,
@@ -276,6 +274,10 @@ export async function getArticles(): Promise<Article[]> {
   try {
     await initDb();
     const sql = getNeonSql();
+    if (!sql) {
+      const fromFile = readArticlesFromFile();
+      return fromFile && fromFile.length > 0 ? fromFile : inMemoryArticles;
+    }
     const rows = await sql`
       SELECT 
         id, 
@@ -407,8 +409,8 @@ export async function saveArticle(article: Article): Promise<Article> {
   try {
     await initDb();
     const sql = getNeonSql();
-
-    await sql`
+    if (sql) {
+      await sql`
       INSERT INTO articles (
         id, title, excerpt, content, category, author, cover_image, date, read_time, published,
         title_en, excerpt_en, content_en, category_en, published_en
@@ -446,7 +448,8 @@ export async function saveArticle(article: Article): Promise<Article> {
         category_en = EXCLUDED.category_en,
         published_en = EXCLUDED.published_en;
     `;
-    console.log(`Article "${title}" (ID: ${id}) successfully synced to Neon.`);
+      console.log(`Article "${title}" (ID: ${id}) successfully synced to Neon.`);
+    }
   } catch (error: any) {
     console.warn('Neon save notice (article is saved on server disk):', error);
   }
@@ -467,8 +470,10 @@ export async function deleteArticle(id: string): Promise<boolean> {
   try {
     await initDb();
     const sql = getNeonSql();
-    await sql`DELETE FROM articles WHERE id = ${targetId};`;
-    console.log(`Article ${targetId} deleted from Neon.`);
+    if (sql) {
+      await sql`DELETE FROM articles WHERE id = ${targetId};`;
+      console.log(`Article ${targetId} deleted from Neon.`);
+    }
   } catch (error) {
     console.warn(`Neon delete notice (article removed from server disk):`, error);
   }
@@ -493,6 +498,11 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'POST' || req.method === 'PUT') {
+      const token = extractToken(req);
+      if (!verifyAdminToken(token)) {
+        return res.status(401).json({ error: 'Потрібна авторизація адміністратора для збереження статей' });
+      }
+
       let body = req.body;
 
       if (typeof body === 'string') {
@@ -556,6 +566,11 @@ export default async function handler(req: any, res: any) {
     }
 
     if (req.method === 'DELETE') {
+      const token = extractToken(req);
+      if (!verifyAdminToken(token)) {
+        return res.status(401).json({ error: 'Потрібна авторизація адміністратора для видалення статей' });
+      }
+
       const id = req.query?.id || req.body?.id;
       if (!id) {
         return res.status(400).json({ error: 'Параметр ID є обов\'язковим' });

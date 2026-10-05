@@ -20,6 +20,7 @@ import {
   Link2,
   FolderTree,
   Tag,
+  LogOut,
 } from 'lucide-react';
 import { Article, SiteSocialLinks, TaxonomiesData } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
@@ -27,12 +28,14 @@ import { ContentRenderer } from './ContentRenderer';
 import { SocialLinksManager } from './SocialLinksManager';
 import { RichArticleEditor } from './RichArticleEditor';
 import { TaxonomyManager } from './TaxonomyManager';
+import { getAuthHeaders } from '../services/auth';
 
 interface AdminPanelProps {
   articles: Article[];
   onSaveArticle: (article: Article) => Promise<void> | void;
   onDeleteArticle: (id: string) => Promise<void> | void;
   onExitAdmin: () => void;
+  onLogout?: () => void;
   onViewArticleOnSite: (id: string) => void;
   socialLinks: SiteSocialLinks;
   onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
@@ -46,6 +49,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   onSaveArticle,
   onDeleteArticle,
   onExitAdmin,
+  onLogout,
   onViewArticleOnSite,
   socialLinks,
   onSaveSocialLinks,
@@ -127,7 +131,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       try {
         const res = await fetch('/api/upload', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders(),
+          },
           body: JSON.stringify({ data: dataUrl, filename: file.name }),
         });
         if (res.ok) {
@@ -600,11 +607,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               e.preventDefault();
               onExitAdmin();
             }}
-            className="text-xs text-neutral-500 hover:text-black flex items-center gap-1.5 transition-colors"
+            className="text-xs text-neutral-500 hover:text-black flex items-center gap-1.5 transition-colors cursor-pointer"
           >
             <Globe className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Головна сторінка</span>
           </a>
+
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="text-xs text-neutral-500 hover:text-red-600 flex items-center gap-1.5 transition-colors cursor-pointer pl-3 border-l border-neutral-200"
+              title="Завершити сеанс адміністратора"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Вийти</span>
+            </button>
+          )}
         </div>
       </header>
 

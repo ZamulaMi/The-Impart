@@ -6,6 +6,7 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import articlesHandler, { getArticles } from './api/articles';
 import settingsHandler, { getSocialLinks } from './api/settings';
+import authHandler, { extractToken, verifyAdminToken } from './api/auth';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,18 @@ app.all(['/api/articles', '/api/articles/*'], async (req, res) => {
   }
 });
 
+// Підключення API ендпоінту автентифікації адміністратора
+app.all(['/api/auth', '/api/auth/*'], async (req, res) => {
+  try {
+    await authHandler(req, res);
+  } catch (err: any) {
+    console.error('Express /api/auth error:', err);
+    if (!res.headersSent) {
+      return res.status(500).json({ error: 'Помилка сервера автентифікації' });
+    }
+  }
+});
+
 // Роздача завантажених файлів (зображень)
 const uploadsDir = path.resolve(__dirname, 'data/uploads');
 if (!fs.existsSync(uploadsDir)) {
@@ -64,9 +77,15 @@ if (!fs.existsSync(uploadsDir)) {
 }
 app.use('/uploads', express.static(uploadsDir));
 
-// Ендпоінт для завантаження зображень (збереження на сервері)
+// Ендпоінт для завантаження зображень (збереження на сервері) — вимагає авторизації адміністратора
 app.post('/api/upload', (req, res) => {
   try {
+    // 1. Перевірка авторизації адміністратора
+    const token = extractToken(req);
+    if (!verifyAdminToken(token)) {
+      return res.status(401).json({ error: 'Потрібна авторизація адміністратора для завантаження медіа' });
+    }
+
     const { data, filename } = req.body || {};
     if (!data || typeof data !== 'string') {
       return res.status(400).json({ error: 'Зображення не передано' });
@@ -74,17 +93,33 @@ app.post('/api/upload', (req, res) => {
 
     const matches = data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
     if (!matches || matches.length !== 3) {
-      // Якщо це вже URL або прямий лінк
+      // Якщо це вже зовнішній URL
       if (data.startsWith('http://') || data.startsWith('https://')) {
         return res.status(200).json({ url: data });
       }
       return res.status(400).json({ error: 'Недійсний формат зображення (очікується Base64 або URL)' });
     }
 
-    const mimeType = matches[1];
+    const mimeType = matches[1].toLowerCase();
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/svg+xml'];
+    if (!allowedMimes.includes(mimeType)) {
+      return res.status(400).json({ error: 'Дозволені лише формати зображень: JPEG, PNG, WebP, GIF, SVG' });
+    }
+
     const base64Data = matches[2];
-    const ext = mimeType.split('/')[1]?.replace('jpeg', 'jpg') || 'png';
-    const cleanName = (filename || 'img').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
+    // Обмеження розміру: максимум 20MB
+    const estimatedBytes = (base64Data.length * 3) / 4;
+    if (estimatedBytes > 20 * 1024 * 1024) {
+      return res.status(413).json({ error: 'Розмір зображення не повинен перевищувати 20MB' });
+    }
+
+    let ext = 'png';
+    if (mimeType.includes('jpeg') || mimeType.includes('jpg')) ext = 'jpg';
+    else if (mimeType.includes('webp')) ext = 'webp';
+    else if (mimeType.includes('gif')) ext = 'gif';
+    else if (mimeType.includes('svg')) ext = 'svg';
+
+    const cleanName = (filename || 'image').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 30);
     const saveName = `${Date.now()}_${cleanName}.${ext}`;
     const filePath = path.join(uploadsDir, saveName);
 
