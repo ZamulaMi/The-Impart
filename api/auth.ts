@@ -16,38 +16,27 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // Токен діє 24 години
 function getJwtSecret(): string {
   return (
     process.env.ADMIN_JWT_SECRET ||
-    'impart_editorial_secret_salt_9f83ac127e90c74f56b2d18e'
+    '8f4a1c9e3b7d2f5a0e6c8b1d4f9a2e5c7b0d3f6a8e1c4b7d0f3a6e9b2c5d8f1a'
   );
 }
 
-// Отримання дозволених облікових даних та валідація
+// Отримання дозволених облікових даних та валідація (єдиний авторизований доступ)
 export function validateCredentials(inputUser: string, inputPass: string): { valid: boolean; username: string } {
-  const allowedUsers = Array.from(new Set([
-    'theimpart_editor',
-    'admin_theimpart',
-    'admin',
-    'impart',
-    (process.env.ADMIN_USERNAME || '').trim(),
-  ])).filter(Boolean);
+  const targetUser = (process.env.ADMIN_USERNAME || 'admin_theimpart').trim();
+  const targetPass = (process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7').trim();
 
-  const allowedPasswords = Array.from(new Set([
-    'Impart#2026!Sec_k9XvL4Q',
-    'K9#vP2$xL8!mR4&qT7',
-    (process.env.ADMIN_PASSWORD || '').trim(),
-  ])).filter(Boolean);
-
-  const userMatch = allowedUsers.some((u) => safeCompare(inputUser, u));
-  const passMatch = allowedPasswords.some((p) => safeCompare(inputPass, p));
+  const userMatch = safeCompare(inputUser, targetUser);
+  const passMatch = safeCompare(inputPass, targetPass);
 
   if (userMatch && passMatch) {
-    return { valid: true, username: inputUser || 'theimpart_editor' };
+    return { valid: true, username: targetUser };
   }
   return { valid: false, username: '' };
 }
 
 export function getAdminCredentials() {
-  const configuredUser = (process.env.ADMIN_USERNAME || 'theimpart_editor').trim();
-  const configuredPass = (process.env.ADMIN_PASSWORD || 'Impart#2026!Sec_k9XvL4Q').trim();
+  const configuredUser = (process.env.ADMIN_USERNAME || 'admin_theimpart').trim();
+  const configuredPass = (process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7').trim();
   return {
     username: configuredUser,
     password: configuredPass,
