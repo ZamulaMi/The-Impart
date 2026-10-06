@@ -186,3 +186,150 @@ export async function logoutAdmin(): Promise<void> {
   } catch {}
   clearAuthToken();
 }
+
+export interface AdminAccountInfo {
+  authenticated: boolean;
+  username: string;
+  isCustom?: boolean;
+}
+
+export async function getAdminAccountInfo(): Promise<AdminAccountInfo | null> {
+  const token = getAuthToken();
+  if (!token) return null;
+
+  try {
+    const headers = {
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    };
+
+    let res = await fetch(`/api/auth?action=verify&_t=${Date.now()}`, {
+      method: 'GET',
+      headers,
+    }).catch(() => null);
+
+    if (!res || res.status === 404) {
+      res = await fetch(`/api/auth/verify?_t=${Date.now()}`, {
+        method: 'GET',
+        headers,
+      }).catch(() => null);
+    }
+
+    if (res && res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.authenticated) {
+        return {
+          authenticated: true,
+          username: data.user?.username || getAdminUser() || 'admin',
+          isCustom: data.user?.isCustom,
+        };
+      }
+    }
+  } catch {}
+
+  return null;
+}
+
+export async function changeAdminCredentials(
+  currentPassword: string,
+  newUsername: string,
+  newPassword: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    };
+    const body = JSON.stringify({
+      action: 'change_credentials',
+      currentPassword,
+      newUsername,
+      newPassword,
+    });
+
+    let res = await fetch('/api/auth', {
+      method: 'POST',
+      headers,
+      body,
+    }).catch(() => null);
+
+    if (!res || res.status === 404) {
+      res = await fetch('/api/auth/change-credentials', {
+        method: 'POST',
+        headers,
+        body,
+      }).catch(() => null);
+    }
+
+    if (!res) {
+      return { success: false, error: "Не вдалося з'єднатися з сервером" };
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.success) {
+      if (data.token) {
+        setAuthToken(data.token, true);
+      }
+      if (data.user?.username) {
+        setAdminUser(data.user.username, true);
+      }
+      return { success: true, message: data.message || 'Логін та пароль успішно оновлено' };
+    }
+
+    return { success: false, error: data.error || 'Не вдалося оновити облікові дані' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Помилка виконання запиту' };
+  }
+}
+
+export async function resetAdminCredentials(
+  currentPassword: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    };
+    const body = JSON.stringify({
+      action: 'reset_credentials',
+      currentPassword,
+    });
+
+    let res = await fetch('/api/auth', {
+      method: 'POST',
+      headers,
+      body,
+    }).catch(() => null);
+
+    if (!res || res.status === 404) {
+      res = await fetch('/api/auth/reset-credentials', {
+        method: 'POST',
+        headers,
+        body,
+      }).catch(() => null);
+    }
+
+    if (!res) {
+      return { success: false, error: "Не вдалося з'єднатися з сервером" };
+    }
+
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.success) {
+      if (data.token) {
+        setAuthToken(data.token, true);
+      }
+      if (data.user?.username) {
+        setAdminUser(data.user.username, true);
+      }
+      return { success: true, message: data.message || 'Облікові дані скинуто до стандартних' };
+    }
+
+    return { success: false, error: data.error || 'Не вдалося скинути облікові дані' };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Помилка виконання запиту' };
+  }
+}

@@ -1,4 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import crypto from 'crypto';
+import { getNeonSql } from './articles';
 
 interface LoginAttempt {
   count: number;
@@ -6,11 +9,27 @@ interface LoginAttempt {
   lastAttempt: number;
 }
 
+interface CustomCredentials {
+  username: string;
+  salt: string;
+  hash: string;
+  updatedAt: string;
+}
+
 // In-memory store for rate limiting by IP
 const loginAttempts = new Map<string, LoginAttempt>();
 const MAX_ATTEMPTS = 5;
 const LOCKOUT_MS = 15 * 60 * 1000; // 15 хвилин блокування після 5 невдалих спроб
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // Токен діє 24 години
+
+// Шляхи для файлового збереження облікових даних на диску
+const DATA_DIR = path.resolve(process.cwd(), 'data');
+const ADMIN_FILE = path.join(DATA_DIR, 'admin.json');
+const TMP_ADMIN_FILE = '/tmp/admin_credentials.json';
+
+// Кеш облікових даних у пам'яті
+let inMemoryCustomCredentials: CustomCredentials | null = null;
+let isCredentialsLoaded = false;
 
 // Отримання секретного ключа для підпису
 function getJwtSecret(): string {
@@ -33,7 +52,7 @@ function cleanEnvVal(val: string | undefined, defaultVal: string): string {
   return trimmed || defaultVal;
 }
 
-// Отримання дозволених облікових даних
+// Отримання стандартних облікових даних
 export function getAdminCredentials() {
   const configuredUser = cleanEnvVal(process.env.ADMIN_USERNAME, 'theimpart_editor');
   const configuredPass = cleanEnvVal(process.env.ADMIN_PASSWORD, 'Impart#2026!Sec_k9XvL4Q');
@@ -41,6 +60,180 @@ export function getAdminCredentials() {
     username: configuredUser,
     password: configuredPass,
   };
+}
+
+// Хешування пароля за допомогою HMAC-SHA256 та унікальної солі
+export function hashPassword(password: string, salt: string): string {
+  return crypto.createHmac('sha256', salt).update(password).digest('hex');
+}
+
+// Безпечне читання з файлу
+function readCustomCredentialsFromFile(): CustomCredentials | null {
+  const paths = [ADMIN_FILE, TMP_ADMIN_FILE];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf-8');
+        if (content && content.trim()) {
+          const parsed = JSON.parse(content);
+          if (parsed && parsed.username && parsed.salt && parsed.hash) {
+            return parsed as CustomCredentials;
+          }
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+// Безпечний запис у файл
+function writeCustomCredentialsToFile(creds: CustomCredentials | null): void {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch {}
+
+  const payload = creds ? JSON.stringify(creds, null, 2) : '';
+  const paths = [ADMIN_FILE, TMP_ADMIN_FILE];
+
+  for (const p of paths) {
+    try {
+      if (creds) {
+        fs.writeFileSync(p, payload, 'utf-8');
+      } else {
+        if (fs.existsSync(p)) fs.unlinkSync(p);
+      }
+    } catch {}
+  }
+}
+
+// Завантаження збережених облікових даних з PostgreSQL або файлу
+export async function ensureCredentialsLoaded(): Promise<void> {
+  if (isCredentialsLoaded) return;
+
+  // 1. Спроба завантажити з PostgreSQL
+  try {
+    const sql = getNeonSql();
+    if (sql) {
+      // Створюємо таблицю site_settings, якщо її ще немає
+      await sql`
+        CREATE TABLE IF NOT EXISTS site_settings (
+          key VARCHAR(100) PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `;
+      const rows = await sql`SELECT value FROM site_settings WHERE key = 'admin_credentials' LIMIT 1;`;
+      if (rows && rows.length > 0 && rows[0].value) {
+        const parsed = typeof rows[0].value === 'string' ? JSON.parse(rows[0].value) : rows[0].value;
+        if (parsed && parsed.username && parsed.salt && parsed.hash) {
+          inMemoryCustomCredentials = parsed;
+          writeCustomCredentialsToFile(parsed);
+          isCredentialsLoaded = true;
+          return;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not read admin_credentials from PostgreSQL (fallback active):', err);
+  }
+
+  // 2. Читання з локального файлу
+  const fromFile = readCustomCredentialsFromFile();
+  if (fromFile) {
+    inMemoryCustomCredentials = fromFile;
+  }
+
+  isCredentialsLoaded = true;
+}
+
+// Отримання діючих облікових даних
+export async function getEffectiveCredentials(): Promise<{
+  username: string;
+  isCustom: boolean;
+  verifyPassword: (password: string) => boolean;
+}> {
+  await ensureCredentialsLoaded();
+
+  if (inMemoryCustomCredentials) {
+    return {
+      username: inMemoryCustomCredentials.username,
+      isCustom: true,
+      verifyPassword: (password: string) => {
+        const computedHash = hashPassword(password, inMemoryCustomCredentials!.salt);
+        return safeCompare(computedHash, inMemoryCustomCredentials!.hash);
+      },
+    };
+  }
+
+  const defaultCreds = getAdminCredentials();
+  return {
+    username: defaultCreds.username,
+    isCustom: false,
+    verifyPassword: (password: string) => safeCompare(password, defaultCreds.password),
+  };
+}
+
+// Збереження нових облікових даних
+export async function saveNewCredentials(
+  newUsername: string,
+  newPassword: string
+): Promise<CustomCredentials> {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = hashPassword(newPassword, salt);
+  const creds: CustomCredentials = {
+    username: newUsername.trim(),
+    salt,
+    hash,
+    updatedAt: new Date().toISOString(),
+  };
+
+  // 1. Оновлюємо пам'ять
+  inMemoryCustomCredentials = creds;
+  isCredentialsLoaded = true;
+
+  // 2. Зберігаємо у файл
+  writeCustomCredentialsToFile(creds);
+
+  // 3. Зберігаємо у PostgreSQL
+  try {
+    const sql = getNeonSql();
+    if (sql) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS site_settings (
+          key VARCHAR(100) PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `;
+      await sql`
+        INSERT INTO site_settings (key, value, updated_at)
+        VALUES ('admin_credentials', ${JSON.stringify(creds)}, CURRENT_TIMESTAMP)
+        ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = CURRENT_TIMESTAMP;
+      `;
+    }
+  } catch (err) {
+    console.warn('Could not persist admin_credentials to PostgreSQL:', err);
+  }
+
+  return creds;
+}
+
+// Скидання до стандартних облікових даних
+export async function resetCredentialsToDefault(): Promise<void> {
+  inMemoryCustomCredentials = null;
+  isCredentialsLoaded = true;
+  writeCustomCredentialsToFile(null);
+
+  try {
+    const sql = getNeonSql();
+    if (sql) {
+      await sql`DELETE FROM site_settings WHERE key = 'admin_credentials';`;
+    }
+  } catch (err) {
+    console.warn('Could not reset admin_credentials in PostgreSQL:', err);
+  }
 }
 
 // Безпечне порівняння рядків з постійним часом (timing attack protection)
@@ -242,8 +435,20 @@ export default async function authHandler(req: any, res: any) {
   const isLogout =
     url.includes('/logout') || queryAction === 'logout' || bodyAction === 'logout';
 
+  const isChangeCredentials =
+    url.includes('/change-credentials') ||
+    queryAction === 'change_credentials' ||
+    bodyAction === 'change_credentials';
+
+  const isResetCredentials =
+    url.includes('/reset-credentials') ||
+    queryAction === 'reset_credentials' ||
+    bodyAction === 'reset_credentials';
+
   const isLogin =
     !isLogout &&
+    !isChangeCredentials &&
+    !isResetCredentials &&
     (url.includes('/login') ||
       queryAction === 'login' ||
       bodyAction === 'login' ||
@@ -251,6 +456,8 @@ export default async function authHandler(req: any, res: any) {
 
   const isVerify =
     !isLogout &&
+    !isChangeCredentials &&
+    !isResetCredentials &&
     !isLogin &&
     (req.method === 'GET' || url.includes('/verify') || queryAction === 'verify');
 
@@ -259,24 +466,109 @@ export default async function authHandler(req: any, res: any) {
     return res.status(200).json({ success: true, message: 'Успішний вихід' });
   }
 
-  // 2. Ендпоінт перевірки статусу сесії
+  // 2. Зміна логіну та паролю адміністратора (вимагає авторизації)
+  if (isChangeCredentials) {
+    const token = extractToken(req) || body?.token;
+    if (!verifyAdminToken(token)) {
+      return res.status(401).json({ error: 'Потрібна авторизація адміністратора' });
+    }
+
+    const currentPass = String(body?.currentPassword || '').trim();
+    const newUsername = String(body?.newUsername || '').trim();
+    const newPassword = String(body?.newPassword || '').trim();
+
+    if (!currentPass) {
+      return res.status(400).json({ error: 'Введіть поточний пароль для підтвердження прав.' });
+    }
+
+    const effective = await getEffectiveCredentials();
+    if (!effective.verifyPassword(currentPass)) {
+      return res.status(400).json({ error: 'Поточний пароль введено невірно.' });
+    }
+
+    if (!newUsername || newUsername.length < 3 || newUsername.length > 50) {
+      return res.status(400).json({ error: 'Логін повинен містити від 3 до 50 символів.' });
+    }
+
+    if (!/^[a-zA-Z0-9а-яА-ЯіїєґІЇЄҐ_.-]+$/u.test(newUsername)) {
+      return res.status(400).json({ error: 'Логін містить неприпустимі символи (дозволені літери, цифри, _, -, .).' });
+    }
+
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: 'Новий пароль повинен містити щонайменше 6 символів.' });
+    }
+
+    if (newPassword.length > 100) {
+      return res.status(400).json({ error: 'Новий пароль занадто довгий (максимум 100 символів).' });
+    }
+
+    await saveNewCredentials(newUsername, newPassword);
+    const newToken = generateAdminToken(newUsername);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Логін та пароль успішно оновлено',
+      token: newToken,
+      user: {
+        username: newUsername,
+        role: 'admin',
+        isCustom: true,
+      },
+    });
+  }
+
+  // 3. Скидання до стандартних налаштувань
+  if (isResetCredentials) {
+    const token = extractToken(req) || body?.token;
+    if (!verifyAdminToken(token)) {
+      return res.status(401).json({ error: 'Потрібна авторизація адміністратора' });
+    }
+
+    const currentPass = String(body?.currentPassword || '').trim();
+    if (!currentPass) {
+      return res.status(400).json({ error: 'Введіть поточний пароль для підтвердження.' });
+    }
+
+    const effective = await getEffectiveCredentials();
+    if (!effective.verifyPassword(currentPass)) {
+      return res.status(400).json({ error: 'Поточний пароль введено невірно.' });
+    }
+
+    await resetCredentialsToDefault();
+    const defaultCreds = getAdminCredentials();
+    const newToken = generateAdminToken(defaultCreds.username);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Облікові дані успішно скинуто до стандартних',
+      token: newToken,
+      user: {
+        username: defaultCreds.username,
+        role: 'admin',
+        isCustom: false,
+      },
+    });
+  }
+
+  // 4. Ендпоінт перевірки статусу сесії
   if (isVerify) {
     const token = extractToken(req) || body?.token;
     const isValid = verifyAdminToken(token);
     if (isValid) {
-      const creds = getAdminCredentials();
+      const effective = await getEffectiveCredentials();
       return res.status(200).json({
         authenticated: true,
         user: {
-          username: creds.username,
+          username: effective.username,
           role: 'admin',
+          isCustom: effective.isCustom,
         },
       });
     }
     return res.status(401).json({ authenticated: false, error: 'Сесія недійсна або завершилась' });
   }
 
-  // 3. Ендпоінт входу
+  // 5. Ендпоінт входу
   if (isLogin) {
     // Перевірка блокування від брутфорсу
     const rateCheck = checkRateLimit(ip);
@@ -294,22 +586,23 @@ export default async function authHandler(req: any, res: any) {
     const inputUser = String(body?.username || '').trim();
     const inputPass = String(body?.password || '').trim();
 
-    const creds = getAdminCredentials();
+    const effective = await getEffectiveCredentials();
 
     // Дозволяємо основний логін або резервний псевдонім 'admin'
     const isUserValid =
-      safeCompare(inputUser, creds.username) || safeCompare(inputUser, 'admin');
-    const isPassValid = safeCompare(inputPass, creds.password);
+      safeCompare(inputUser, effective.username) || safeCompare(inputUser, 'admin');
+    const isPassValid = effective.verifyPassword(inputPass);
 
     if (isUserValid && isPassValid) {
       resetAttempts(ip);
-      const token = generateAdminToken(creds.username);
+      const token = generateAdminToken(effective.username);
       return res.status(200).json({
         success: true,
         token,
         user: {
-          username: creds.username,
+          username: effective.username,
           role: 'admin',
+          isCustom: effective.isCustom,
         },
       });
     }

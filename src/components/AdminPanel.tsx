@@ -21,6 +21,7 @@ import {
   FolderTree,
   Tag,
   LogOut,
+  Shield,
 } from 'lucide-react';
 import { Article, SiteSocialLinks, TaxonomiesData } from '../types';
 import { formatTimeAgoOrDate } from '../utils/date';
@@ -28,6 +29,7 @@ import { ContentRenderer } from './ContentRenderer';
 import { SocialLinksManager } from './SocialLinksManager';
 import { RichArticleEditor } from './RichArticleEditor';
 import { TaxonomyManager } from './TaxonomyManager';
+import { AdminSecurityManager } from './AdminSecurityManager';
 import { getAuthHeaders } from '../services/auth';
 
 interface AdminPanelProps {
@@ -57,8 +59,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
   taxonomies,
   onSaveTaxonomies,
 }) => {
-  // Розділ адмін-панелі: "Редактор статей" ('articles'), "Рубрики та теми" ('taxonomies') або "Соц. мережі" ('social_links')
-  const [activeSection, setActiveSection] = useState<'articles' | 'taxonomies' | 'social_links'>('articles');
+  // Розділ адмін-панелі: "Редактор статей", "Рубрики та теми", "Соц. мережі" або "Безпека та пароль"
+  const [activeSection, setActiveSection] = useState<'articles' | 'taxonomies' | 'social_links' | 'security'>('articles');
 
   const [editingArticle, setEditingArticle] = useState<Partial<Article> | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -696,6 +698,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               <Share2 className="w-4 h-4 shrink-0" />
               <span>Соц. мережі</span>
             </button>
+
+            {/* Опція 4: Безпека та пароль */}
+            <button
+              type="button"
+              onClick={() => {
+                setActiveSection('security');
+                setEditingArticle(null);
+                setIsCreatingNew(false);
+              }}
+              className={`flex-1 md:flex-initial flex items-center gap-3 px-3.5 py-2.5 text-xs sm:text-sm font-medium rounded-md transition-all cursor-pointer text-left ${
+                activeSection === 'security'
+                  ? 'bg-black text-white shadow-xs'
+                  : 'text-neutral-600 hover:text-black hover:bg-neutral-100'
+              }`}
+            >
+              <Shield className="w-4 h-4 shrink-0" />
+              <span>Безпека та пароль</span>
+            </button>
           </nav>
         </aside>
 
@@ -714,6 +734,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               onSaveSocialLinks={onSaveSocialLinks}
               onRefreshSocialLinks={onRefreshSocialLinks}
               showNotification={showNotification}
+            />
+          ) : activeSection === 'security' ? (
+            <AdminSecurityManager
+              showNotification={showNotification}
+              onLogout={onLogout}
             />
           ) : editingArticle ? (
           /* Форма редагування / створення статті */
