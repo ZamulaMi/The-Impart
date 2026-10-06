@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Search, Lock } from 'lucide-react';
+import { X, Search } from 'lucide-react';
 import { HeaderSection, NAV_SECTIONS } from '../App';
 import { SiteLanguage } from '../types';
 
@@ -11,7 +11,6 @@ interface RubricsModalProps {
   siteLang: SiteLanguage;
   onSwitchLang: (lang: SiteLanguage) => void;
   onOpenSearch: () => void;
-  onOpenAdmin?: () => void;
 }
 
 export const RubricsModal: React.FC<RubricsModalProps> = ({
@@ -22,7 +21,6 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
   siteLang,
   onSwitchLang,
   onOpenSearch,
-  onOpenAdmin,
 }) => {
   const [rendered, setRendered] = useState(isOpen);
   const [isAnimateIn, setIsAnimateIn] = useState(false);
@@ -95,10 +93,9 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
 
           {/* По центру: назва сайту The Impart (слугує переходом на головну) */}
           <div className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
-            <a
-              href="/"
-              onClick={(e) => {
-                e.preventDefault();
+            <button
+              type="button"
+              onClick={() => {
                 onSelectSection(null);
                 onClose();
               }}
@@ -107,7 +104,7 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
               The Impart
-            </a>
+            </button>
           </div>
 
           {/* Права сторона: кнопка швидкого переходу до пошуку, вирівняна з кнопкою пошуку в шапці */}
@@ -142,11 +139,10 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
             const isActive = activeSection === sec.id;
             const title = siteLang === 'en' ? sec.titleEn : sec.titleUa;
             return (
-              <a
+              <button
                 key={`modal_rubric_${sec.id}`}
-                href={`/${sec.id}`}
-                onClick={(e) => {
-                  e.preventDefault();
+                type="button"
+                onClick={() => {
                   onSelectSection(sec.id);
                   onClose();
                 }}
@@ -166,31 +162,17 @@ export const RubricsModal: React.FC<RubricsModalProps> = ({
                     isActive ? 'w-3/4' : 'w-0 group-hover:w-3/4'
                   }`}
                 />
-              </a>
+              </button>
             );
           })}
         </nav>
 
-        {/* Низ модального вікна: кнопка входу до редакції та перемикач мови UA / EN */}
+        {/* Низ модального вікна: мінімалістичний перемикач мови UA / EN */}
         <div
           className={`pb-4 sm:pb-8 flex flex-col items-center gap-3 transition-all duration-350 delay-75 ease-out ${
             isAnimateIn ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0'
           }`}
         >
-          {onOpenAdmin && (
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenAdmin();
-              }}
-              className="flex items-center gap-2 text-xs text-neutral-600 hover:text-black py-1.5 px-4 rounded-full border border-neutral-300 hover:border-black transition-all cursor-pointer shadow-xs mb-1 bg-white/70"
-            >
-              <Lock className="w-3.5 h-3.5 text-neutral-500" />
-              <span>{siteLang === 'en' ? 'Editorial panel' : 'Панель редакції'}</span>
-            </button>
-          )}
-
           <div className="flex items-center gap-1.5 p-1 bg-neutral-100/90 rounded-full border border-neutral-200/50">
             <button
               type="button"

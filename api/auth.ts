@@ -16,44 +16,14 @@ const TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // Токен діє 24 години
 function getJwtSecret(): string {
   return (
     process.env.ADMIN_JWT_SECRET ||
-    '8f4a1c9e3b7d2f5a0e6c8b1d4f9a2e5c7b0d3f6a8e1c4b7d0f3a6e9b2c5d8f1a'
+    'impart_editorial_secret_salt_9f83ac127e90c74f56b2d18e'
   );
 }
 
-// Очищення облікових даних від випадкових лапок, пробілів та префіксів
-export function cleanCredential(raw: string): string {
-  if (!raw) return '';
-  let str = String(raw).trim();
-  if (/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i.test(str)) {
-    str = str.replace(/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i, '').trim();
-  }
-  str = str.replace(/^["'`]|["'`]$/g, '').trim();
-  return str;
-}
-
-// Отримання дозволених облікових даних та валідація (єдиний авторизований доступ)
-export function validateCredentials(inputUser: string, inputPass: string): { valid: boolean; username: string } {
-  const targetUser = cleanCredential(process.env.ADMIN_USERNAME || 'admin_theimpart');
-  const targetPass = cleanCredential(process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7');
-
-  const uRaw = String(inputUser || '').trim();
-  const uClean = cleanCredential(inputUser);
-
-  const pRaw = String(inputPass || '');
-  const pClean = cleanCredential(inputPass);
-
-  const userMatch = safeCompare(uRaw, targetUser) || safeCompare(uClean, targetUser);
-  const passMatch = safeCompare(pRaw, targetPass) || safeCompare(pClean, targetPass);
-
-  if (userMatch && passMatch) {
-    return { valid: true, username: targetUser };
-  }
-  return { valid: false, username: '' };
-}
-
+// Отримання дозволених облікових даних
 export function getAdminCredentials() {
-  const configuredUser = cleanCredential(process.env.ADMIN_USERNAME || 'admin_theimpart');
-  const configuredPass = cleanCredential(process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7');
+  const configuredUser = (process.env.ADMIN_USERNAME || 'theimpart_editor').trim();
+  const configuredPass = (process.env.ADMIN_PASSWORD || 'Impart#2026!Sec_k9XvL4Q').trim();
   return {
     username: configuredUser,
     password: configuredPass,
@@ -208,8 +178,18 @@ export default async function authHandler(req: any, res: any) {
 
   // 2. Ендпоінт входу POST /api/auth/login
   if (req.method === 'POST' && url.includes('/login')) {
+    // Перевірка блокування від брутфорсу
+    const rateCheck = checkRateLimit(ip);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: `Забагато невдалих спроб входу. Задля безпеки доступ заблоковано на ${rateCheck.remainingLockoutSeconds} сек.`,
+        locked: true,
+        retryAfter: rateCheck.remainingLockoutSeconds,
+      });
+    }
+
     // Затримка проти таймінг-атак та автоматизованих скриптів
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) => setTimeout(resolve, 350));
 
     let body = req.body;
     if (typeof body === 'string') {
@@ -220,32 +200,26 @@ export default async function authHandler(req: any, res: any) {
       }
     }
 
-    const inputUser = String(body?.username || '');
+    const inputUser = String(body?.username || '').trim();
     const inputPass = String(body?.password || '');
 
-    const check = validateCredentials(inputUser, inputPass);
+    const creds = getAdminCredentials();
 
-    // Якщо облікові дані правильні — миттєво авторизуємо та скидаємо будь-які блокування
-    if (check.valid) {
+    // Дозволяємо основний логін або резервний псевдонім 'admin'
+    const isUserValid =
+      safeCompare(inputUser, creds.username) || safeCompare(inputUser, 'admin');
+    const isPassValid = safeCompare(inputPass, creds.password);
+
+    if (isUserValid && isPassValid) {
       resetAttempts(ip);
-      const token = generateAdminToken(check.username);
+      const token = generateAdminToken(creds.username);
       return res.status(200).json({
         success: true,
         token,
         user: {
-          username: check.username,
+          username: creds.username,
           role: 'admin',
         },
-      });
-    }
-
-    // Якщо дані неправильні — перевіряємо стан блокування
-    const rateCheck = checkRateLimit(ip);
-    if (!rateCheck.allowed) {
-      return res.status(429).json({
-        error: `Забагато невдалих спроб входу. Задля безпеки доступ заблоковано на ${rateCheck.remainingLockoutSeconds} сек.`,
-        locked: true,
-        retryAfter: rateCheck.remainingLockoutSeconds,
       });
     }
 
@@ -253,7 +227,7 @@ export default async function authHandler(req: any, res: any) {
     const failInfo = recordFailedAttempt(ip);
     if (failInfo.locked) {
       return res.status(429).json({
-        error: `Невірний логін або пароль. Перевищено ліміт спроб. Спробуйте пізніше або введіть точні дані.`,
+        error: `Невірний логін або пароль. Ви перевищили кількість спроб (5). Доступ заблоковано на 15 хвилин.`,
         locked: true,
         retryAfter: failInfo.remainingLockoutSeconds,
       });
