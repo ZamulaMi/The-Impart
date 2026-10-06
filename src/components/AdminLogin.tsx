@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, KeyRound, Loader2 } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { loginAdmin } from '../services/auth';
 
 interface AdminLoginProps {
@@ -8,7 +8,7 @@ interface AdminLoginProps {
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackToSite }) => {
-  const [username, setUsername] = useState('theimpart_editor');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
@@ -17,9 +17,26 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
+  const cleanInput = (val: string) => {
+    return val
+      .trim()
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i, '')
+      .trim();
+  };
+
+  const handleFillCredentials = () => {
+    setUsername('admin_theimpart');
+    setPassword('K9#vP2$xL8!mR4&qT7');
+    setErrorMessage(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password) {
+    const cleanUser = cleanInput(username);
+    const cleanPass = cleanInput(password);
+
+    if (!cleanUser || !cleanPass) {
       setErrorMessage('Будь ласка, введіть логін та пароль.');
       return;
     }
@@ -27,7 +44,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
     setIsLoading(true);
     setErrorMessage(null);
 
-    const result = await loginAdmin(username.trim(), password, rememberMe);
+    const result = await loginAdmin(cleanUser, cleanPass, rememberMe);
     setIsLoading(false);
 
     if (result.success) {
@@ -41,12 +58,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
         setIsLocked(true);
       }
     }
-  };
-
-  const handleFillCredentials = () => {
-    setUsername('theimpart_editor');
-    setPassword('Impart#2026!Sec_k9XvL4Q');
-    setErrorMessage(null);
   };
 
   return (
@@ -120,7 +131,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={isLoading || isLocked}
-                  placeholder="theimpart_editor"
+                  placeholder="Введіть логін"
                   required
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 bg-neutral-900 border border-neutral-800 focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400 rounded-lg text-sm text-white placeholder-neutral-600 transition-all outline-none disabled:opacity-50"
@@ -171,10 +182,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
               <button
                 type="button"
                 onClick={handleFillCredentials}
-                className="text-neutral-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
-                title="Підставити стандартні облікові дані"
+                className="text-neutral-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-[11px] py-1 px-2 rounded hover:bg-neutral-800"
+                title="Автоматично підставити облікові дані"
               >
-                <KeyRound className="w-3 h-3 text-neutral-500" />
+                <KeyRound className="w-3.5 h-3.5 text-neutral-400" />
                 <span>Заповнити дані</span>
               </button>
             </div>
@@ -194,24 +205,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
               )}
             </button>
           </form>
-
-          {/* Інформаційна плашка з обліковими даними */}
-          <div className="mt-8 pt-6 border-t border-neutral-900 text-center">
-            <div className="bg-neutral-900/70 border border-neutral-800/80 rounded-lg p-3 text-[11px] text-neutral-400 font-mono text-left">
-              <div className="flex items-center justify-between text-neutral-500 text-[10px] uppercase tracking-wider mb-1">
-                <span>Облікові дані адміністратора:</span>
-                <span className="text-emerald-500 font-semibold">Безпечно</span>
-              </div>
-              <div className="flex justify-between py-0.5">
-                <span className="text-neutral-500">Логін:</span>
-                <span className="text-white font-medium select-all">theimpart_editor</span>
-              </div>
-              <div className="flex justify-between py-0.5">
-                <span className="text-neutral-500">Пароль:</span>
-                <span className="text-neutral-200 font-medium select-all">Impart#2026!Sec_k9XvL4Q</span>
-              </div>
-            </div>
-          </div>
         </div>
       </main>
 

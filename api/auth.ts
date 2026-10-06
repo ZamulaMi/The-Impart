@@ -20,10 +20,23 @@ function getJwtSecret(): string {
   );
 }
 
+// Очищення значень з process.env від випадкових лапок при копіюванні у Vercel
+function cleanEnvVal(val: string | undefined, defaultVal: string): string {
+  if (!val) return defaultVal;
+  let trimmed = val.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    trimmed = trimmed.slice(1, -1).trim();
+  }
+  return trimmed || defaultVal;
+}
+
 // Отримання дозволених облікових даних
 export function getAdminCredentials() {
-  const configuredUser = (process.env.ADMIN_USERNAME || 'theimpart_editor').trim();
-  const configuredPass = (process.env.ADMIN_PASSWORD || 'Impart#2026!Sec_k9XvL4Q').trim();
+  const configuredUser = cleanEnvVal(process.env.ADMIN_USERNAME, 'theimpart_editor');
+  const configuredPass = cleanEnvVal(process.env.ADMIN_PASSWORD, 'Impart#2026!Sec_k9XvL4Q');
   return {
     username: configuredUser,
     password: configuredPass,
@@ -147,8 +160,70 @@ function resetAttempts(ip: string) {
   loginAttempts.delete(ip);
 }
 
-// Ендпоінт входу / перевірки
+// Допоміжна функція для отримання тіла запиту у Vercel Serverless / Node.js
+async function parseBody(req: any): Promise<any> {
+  if (req.body) {
+    if (typeof req.body === 'string') {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        try {
+          const params = new URLSearchParams(req.body);
+          const obj: Record<string, any> = {};
+          params.forEach((v, k) => {
+            obj[k] = v;
+          });
+          return obj;
+        } catch {
+          return {};
+        }
+      }
+    }
+    if (typeof req.body === 'object') {
+      return req.body;
+    }
+  }
+
+  // Якщо тіло ще не зчитано (stream у деяких середовищах Node / Vercel)
+  if (typeof req.on === 'function' && !req.readableEnded && req.readable) {
+    try {
+      const data = await new Promise<string>((resolve) => {
+        let buf = '';
+        req.on('data', (chunk: any) => {
+          buf += chunk;
+        });
+        req.on('end', () => resolve(buf));
+        req.on('error', () => resolve(''));
+      });
+      if (!data) return {};
+      try {
+        return JSON.parse(data);
+      } catch {
+        try {
+          const params = new URLSearchParams(data);
+          const obj: Record<string, any> = {};
+          params.forEach((v, k) => {
+            obj[k] = v;
+          });
+          return obj;
+        } catch {
+          return {};
+        }
+      }
+    } catch {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+// Ендпоінт входу / перевірки (сумісний як з Express, так і з Vercel Serverless)
 export default async function authHandler(req: any, res: any) {
+  // Налаштування CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
@@ -158,10 +233,35 @@ export default async function authHandler(req: any, res: any) {
 
   const url = req.url || '';
   const ip = getClientIp(req);
+  const queryAction = req.query?.action || '';
 
-  // 1. Ендпоінт перевірки статусу сесії GET /api/auth/verify
-  if (req.method === 'GET' && (url.includes('/verify') || url.endsWith('/auth'))) {
-    const token = extractToken(req);
+  // Отримуємо тіло запиту
+  const body = await parseBody(req);
+  const bodyAction = body?.action || '';
+
+  const isLogout =
+    url.includes('/logout') || queryAction === 'logout' || bodyAction === 'logout';
+
+  const isLogin =
+    !isLogout &&
+    (url.includes('/login') ||
+      queryAction === 'login' ||
+      bodyAction === 'login' ||
+      (req.method === 'POST' && (body?.password !== undefined || body?.username !== undefined)));
+
+  const isVerify =
+    !isLogout &&
+    !isLogin &&
+    (req.method === 'GET' || url.includes('/verify') || queryAction === 'verify');
+
+  // 1. Ендпоінт виходу
+  if (isLogout) {
+    return res.status(200).json({ success: true, message: 'Успішний вихід' });
+  }
+
+  // 2. Ендпоінт перевірки статусу сесії
+  if (isVerify) {
+    const token = extractToken(req) || body?.token;
     const isValid = verifyAdminToken(token);
     if (isValid) {
       const creds = getAdminCredentials();
@@ -176,8 +276,8 @@ export default async function authHandler(req: any, res: any) {
     return res.status(401).json({ authenticated: false, error: 'Сесія недійсна або завершилась' });
   }
 
-  // 2. Ендпоінт входу POST /api/auth/login
-  if (req.method === 'POST' && url.includes('/login')) {
+  // 3. Ендпоінт входу
+  if (isLogin) {
     // Перевірка блокування від брутфорсу
     const rateCheck = checkRateLimit(ip);
     if (!rateCheck.allowed) {
@@ -188,20 +288,11 @@ export default async function authHandler(req: any, res: any) {
       });
     }
 
-    // Затримка проти таймінг-атак та автоматизованих скриптів
-    await new Promise((resolve) => setTimeout(resolve, 350));
-
-    let body = req.body;
-    if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch {
-        return res.status(400).json({ error: 'Недійсний JSON' });
-      }
-    }
+    // Невелика затримка проти таймінг-атак
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     const inputUser = String(body?.username || '').trim();
-    const inputPass = String(body?.password || '');
+    const inputPass = String(body?.password || '').trim();
 
     const creds = getAdminCredentials();
 
@@ -240,11 +331,6 @@ export default async function authHandler(req: any, res: any) {
       error: 'Невірний логін або пароль адміністратора.',
       remainingAttempts,
     });
-  }
-
-  // 3. Ендпоінт виходу POST /api/auth/logout
-  if (req.method === 'POST' && url.includes('/logout')) {
-    return res.status(200).json({ success: true, message: 'Успішний вихід' });
   }
 
   return res.status(404).json({ error: 'Endpoint not found' });

@@ -72,13 +72,34 @@ export async function loginAdmin(
   retryAfter?: number;
 }> {
   try {
-    const res = await fetch('/api/auth/login', {
+    const payload = JSON.stringify({ action: 'login', username, password });
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    };
+
+    // Спочатку пробуємо прямий ендпоінт /api/auth
+    let res = await fetch('/api/auth', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ username, password }),
-    });
+      headers,
+      body: payload,
+    }).catch(() => null);
+
+    // Якщо 404 або помилка роутингу, пробуємо /api/auth/login
+    if (!res || res.status === 404) {
+      res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers,
+        body: payload,
+      }).catch(() => null);
+    }
+
+    if (!res) {
+      return {
+        success: false,
+        error: "Не вдалося з'єднатися з сервером авторизації",
+      };
+    }
 
     const data = await res.json().catch(() => ({}));
 
@@ -110,14 +131,24 @@ export async function verifyAdminSession(): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const res = await fetch(`/api/auth/verify?_t=${Date.now()}`, {
-      method: 'GET',
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
+    const headers = {
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    };
 
-    if (res.ok) {
+    let res = await fetch(`/api/auth?action=verify&_t=${Date.now()}`, {
+      method: 'GET',
+      headers,
+    }).catch(() => null);
+
+    if (!res || res.status === 404) {
+      res = await fetch(`/api/auth/verify?_t=${Date.now()}`, {
+        method: 'GET',
+        headers,
+      }).catch(() => null);
+    }
+
+    if (res && res.ok) {
       const data = await res.json().catch(() => ({}));
       if (data.authenticated) {
         return true;
@@ -132,12 +163,26 @@ export async function verifyAdminSession(): Promise<boolean> {
 
 export async function logoutAdmin(): Promise<void> {
   try {
-    await fetch('/api/auth/logout', {
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...getAuthHeaders(),
+    };
+    const body = JSON.stringify({ action: 'logout' });
+
+    let res = await fetch('/api/auth', {
       method: 'POST',
-      headers: {
-        ...getAuthHeaders(),
-      },
-    });
+      headers,
+      body,
+    }).catch(() => null);
+
+    if (!res || res.status === 404) {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        headers,
+        body,
+      }).catch(() => null);
+    }
   } catch {}
   clearAuthToken();
 }

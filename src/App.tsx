@@ -274,12 +274,43 @@ export default function App() {
     saveStoredTaxonomies(data);
   };
 
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [articles, setArticles] = useState<Article[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch (e) {}
+    }
+    return [];
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const local = localStorage.getItem(STORAGE_KEY);
+        if (local) {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return false;
+          }
+        }
+      } catch (e) {}
+    }
+    return true;
+  });
 
   // Активний розділ у шапці: 'news' | 'articles' | 'reviews' | null (null = головна стрічка)
   const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => {
     if (typeof window === 'undefined') return null;
+    const path = window.location.pathname.replace(/^\/|\/$/g, '').toLowerCase();
+    const firstSegment = path.split('/')[0];
+    if (firstSegment && ['news', 'articles', 'reviews'].includes(firstSegment)) {
+      return firstSegment as HeaderSection;
+    }
     const params = new URLSearchParams(window.location.search);
     const sec = params.get('section') as HeaderSection | null;
     if (sec && ['news', 'articles', 'reviews'].includes(sec)) return sec;
@@ -431,24 +462,6 @@ export default function App() {
   };
 
   const fetchArticlesFromDb = async () => {
-    // 1. Пряме завантаження статей із хмарної бази Neon
-    try {
-      const cloudArticles = await fetchArticlesFromCloud();
-      if (cloudArticles && Array.isArray(cloudArticles) && cloudArticles.length > 0) {
-        setArticles(cloudArticles);
-        try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudArticles));
-        } catch (e) {
-          console.error(e);
-        }
-        setIsLoading(false);
-        return;
-      }
-    } catch (e) {
-      console.warn('Neon direct articles fetch notice:', e);
-    }
-
-    // 2. Резервне завантаження через /api/articles
     try {
       const res = await fetch(`/api/articles?_t=${Date.now()}`, {
         cache: 'no-store',
@@ -456,25 +469,31 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
+        if (Array.isArray(data) && data.length > 0) {
           setArticles(data);
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
           } catch (e) {
             console.error(e);
           }
+          setIsLoading(false);
+          return;
         }
       }
     } catch (err) {
       console.warn('Backend unavailable, checking local storage:', err);
-      try {
-        const cached = localStorage.getItem(STORAGE_KEY);
-        if (cached) {
-          setArticles(JSON.parse(cached));
+    }
+
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setArticles(parsed);
         }
-      } catch (e) {
-        console.error(e);
       }
+    } catch (e) {
+      console.error(e);
     } finally {
       setIsLoading(false);
     }
@@ -489,10 +508,12 @@ export default function App() {
   // Синхронізація з навігацією браузера (URL, popstate, hashchange)
   useEffect(() => {
     const handleLocationChange = () => {
-      const path = window.location.pathname;
+      const rawPath = window.location.pathname.replace(/^\/|\/$/g, '').toLowerCase();
+      const firstSegment = rawPath.split('/')[0] || '';
       const hash = window.location.hash;
       const search = window.location.search;
-      if (path.includes('/admin') || hash === '#admin' || search.includes('admin')) {
+
+      if (firstSegment === 'admin' || hash === '#admin' || search.includes('admin')) {
         setCurrentRoute('admin');
         setSelectedArticleId(null);
         return;
@@ -516,6 +537,10 @@ export default function App() {
         setActiveSearchFilter({ query: srchParam.trim(), articleIds: [] });
         setSearchPage(safePg);
         setActiveCategorySection(null);
+      } else if (['news', 'articles', 'reviews'].includes(firstSegment)) {
+        setActiveSearchFilter(null);
+        setActiveCategorySection(firstSegment as HeaderSection);
+        setCategoryPage(safePg);
       } else if (secParam && ['news', 'articles', 'reviews'].includes(secParam)) {
         setActiveSearchFilter(null);
         setActiveCategorySection(secParam);
@@ -528,9 +553,18 @@ export default function App() {
 
     window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('hashchange', handleLocationChange);
+    const handleAdminKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        navigateTo('admin');
+      }
+    };
+    window.addEventListener('keydown', handleAdminKey);
+
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
       window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('keydown', handleAdminKey);
     };
   }, []);
 
@@ -546,7 +580,7 @@ export default function App() {
         setSelectedArticleId(articleId);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        window.history.pushState(null, '', window.location.pathname);
+        window.history.pushState(null, '', '/');
         setSelectedArticleId(null);
         setActiveCategorySection(null);
       }
@@ -559,9 +593,9 @@ export default function App() {
     setSelectedArticleId(null);
     setActiveSearchFilter(null);
     if (sec) {
-      window.history.pushState(null, '', `?section=${sec}`);
+      window.history.pushState(null, '', `/${sec}`);
     } else {
-      window.history.pushState(null, '', window.location.pathname);
+      window.history.pushState(null, '', '/');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -569,10 +603,11 @@ export default function App() {
   const handleSelectCategoryPage = (pageNumber: number) => {
     setCategoryPage(pageNumber);
     if (activeCategorySection) {
+      const pageSuffix = pageNumber > 1 ? `?page=${pageNumber}` : '';
       window.history.pushState(
         null,
         '',
-        `?section=${activeCategorySection}${pageNumber > 1 ? `&page=${pageNumber}` : ''}`
+        `/${activeCategorySection}${pageSuffix}`
       );
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -605,7 +640,11 @@ export default function App() {
   const handleResetSearch = () => {
     setActiveSearchFilter(null);
     setSearchPage(1);
-    window.history.pushState(null, '', window.location.pathname);
+    if (activeCategorySection) {
+      window.history.pushState(null, '', `/${activeCategorySection}`);
+    } else {
+      window.history.pushState(null, '', '/');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -623,13 +662,14 @@ export default function App() {
           `?search=${encodeURIComponent(activeSearchFilter.query)}${searchPage > 1 ? `&page=${searchPage}` : ''}`
         );
       } else if (activeCategorySection) {
+        const pageSuffix = categoryPage > 1 ? `?page=${categoryPage}` : '';
         window.history.pushState(
           null,
           '',
-          `?section=${activeCategorySection}${categoryPage > 1 ? `&page=${categoryPage}` : ''}`
+          `/${activeCategorySection}${pageSuffix}`
         );
       } else {
-        window.history.pushState(null, '', window.location.pathname);
+        window.history.pushState(null, '', '/');
       }
       setSelectedArticleId(null);
     }
@@ -824,9 +864,10 @@ export default function App() {
 
             {/* Десктопний логотип (на лівій межі) */}
             <div className="hidden md:block overflow-hidden py-0.5 -my-0.5">
-              <button
-                type="button"
-                onClick={() => {
+              <a
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault();
                   handleSelectSection(null);
                   setActiveSearchFilter(null);
                 }}
@@ -835,7 +876,7 @@ export default function App() {
                 style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
               >
                 The Impart
-              </button>
+              </a>
             </div>
           </div>
 
@@ -845,9 +886,10 @@ export default function App() {
           */}
           {/* Мобільний логотип по центру */}
           <div className="md:hidden absolute left-1/2 -translate-x-1/2 z-10 pointer-events-auto">
-            <button
-              type="button"
-              onClick={() => {
+            <a
+              href="/"
+              onClick={(e) => {
+                e.preventDefault();
                 handleSelectSection(null);
                 setActiveSearchFilter(null);
                 setIsMobileMenuOpen(false);
@@ -857,7 +899,7 @@ export default function App() {
               style={{ fontFamily: "'Playfair Display', Georgia, serif" }}
             >
               The Impart
-            </button>
+            </a>
           </div>
 
           {/* Десктопний вибір рубрик (Новини / Статті / Огляди) по центру з жирнішим шрифтом */}
@@ -868,10 +910,13 @@ export default function App() {
             {NAV_SECTIONS.map((sec) => {
               const isActive = activeCategorySection === sec.id && !selectedArticleId && !activeSearchFilter;
               return (
-                <button
+                <a
                   key={sec.id}
-                  type="button"
-                  onClick={() => handleSelectSection(sec.id)}
+                  href={`/${sec.id}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    handleSelectSection(sec.id);
+                  }}
                   className={`group relative py-1 text-sm md:text-[15px] transition-colors duration-250 cursor-pointer focus:outline-none ${
                     isActive
                       ? 'text-black font-bold tracking-normal'
@@ -887,18 +932,29 @@ export default function App() {
                       isActive ? 'w-full' : 'w-0 group-hover:w-full'
                     }`}
                   />
-                </button>
+                </a>
               );
             })}
           </nav>
 
-          {/* Права сторона: кнопка пошуку (і на мобільних, і на десктопі) */}
-          <div className="z-20 flex items-center justify-end">
+          {/* Права сторона: кнопка входу до редакції та пошук */}
+          <div className="z-20 flex items-center justify-end gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => navigateTo('admin')}
+              aria-label="Вхід до панелі керування"
+              title="Панель редакції"
+              className="text-neutral-500 hover:text-black active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center gap-1.5 text-xs py-1.5 px-2.5 rounded-md hover:bg-neutral-100"
+            >
+              <Lock className="w-3.5 h-3.5 stroke-[1.8]" />
+              <span className="hidden sm:inline font-sans text-xs">Редакція</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
               aria-label="Пошук"
-              className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-10 h-10 -mr-2"
+              className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 -mr-2"
             >
               <Search className="w-5 h-5 stroke-[1.8]" />
             </button>
@@ -917,6 +973,7 @@ export default function App() {
         siteLang={siteLang}
         onSwitchLang={handleSetLang}
         onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenAdmin={() => navigateTo('admin')}
       />
 
       {/* Центральна частина (Body) зі статтями */}
