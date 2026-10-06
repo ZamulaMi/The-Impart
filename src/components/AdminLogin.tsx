@@ -17,9 +17,20 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
   const [remainingAttempts, setRemainingAttempts] = useState<number | null>(null);
   const [isLocked, setIsLocked] = useState(false);
 
+  const cleanInput = (val: string) => {
+    return val
+      .trim()
+      .replace(/^["'`]|["'`]$/g, '')
+      .replace(/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i, '')
+      .trim();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password) {
+    const cleanUser = cleanInput(username);
+    const cleanPass = cleanInput(password);
+
+    if (!cleanUser || !cleanPass) {
       setErrorMessage('Будь ласка, введіть логін та пароль.');
       return;
     }
@@ -27,7 +38,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
     setIsLoading(true);
     setErrorMessage(null);
 
-    const result = await loginAdmin(username.trim(), password, rememberMe);
+    const result = await loginAdmin(cleanUser, cleanPass, rememberMe);
     setIsLoading(false);
 
     if (result.success) {

@@ -20,13 +20,30 @@ function getJwtSecret(): string {
   );
 }
 
+// Очищення облікових даних від випадкових лапок, пробілів та префіксів
+export function cleanCredential(raw: string): string {
+  if (!raw) return '';
+  let str = String(raw).trim();
+  if (/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i.test(str)) {
+    str = str.replace(/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i, '').trim();
+  }
+  str = str.replace(/^["'`]|["'`]$/g, '').trim();
+  return str;
+}
+
 // Отримання дозволених облікових даних та валідація (єдиний авторизований доступ)
 export function validateCredentials(inputUser: string, inputPass: string): { valid: boolean; username: string } {
-  const targetUser = (process.env.ADMIN_USERNAME || 'admin_theimpart').trim();
-  const targetPass = (process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7').trim();
+  const targetUser = cleanCredential(process.env.ADMIN_USERNAME || 'admin_theimpart');
+  const targetPass = cleanCredential(process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7');
 
-  const userMatch = safeCompare(inputUser, targetUser);
-  const passMatch = safeCompare(inputPass, targetPass);
+  const uRaw = String(inputUser || '').trim();
+  const uClean = cleanCredential(inputUser);
+
+  const pRaw = String(inputPass || '');
+  const pClean = cleanCredential(inputPass);
+
+  const userMatch = safeCompare(uRaw, targetUser) || safeCompare(uClean, targetUser);
+  const passMatch = safeCompare(pRaw, targetPass) || safeCompare(pClean, targetPass);
 
   if (userMatch && passMatch) {
     return { valid: true, username: targetUser };
@@ -35,8 +52,8 @@ export function validateCredentials(inputUser: string, inputPass: string): { val
 }
 
 export function getAdminCredentials() {
-  const configuredUser = (process.env.ADMIN_USERNAME || 'admin_theimpart').trim();
-  const configuredPass = (process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7').trim();
+  const configuredUser = cleanCredential(process.env.ADMIN_USERNAME || 'admin_theimpart');
+  const configuredPass = cleanCredential(process.env.ADMIN_PASSWORD || 'K9#vP2$xL8!mR4&qT7');
   return {
     username: configuredUser,
     password: configuredPass,
@@ -191,18 +208,8 @@ export default async function authHandler(req: any, res: any) {
 
   // 2. Ендпоінт входу POST /api/auth/login
   if (req.method === 'POST' && url.includes('/login')) {
-    // Перевірка блокування від брутфорсу
-    const rateCheck = checkRateLimit(ip);
-    if (!rateCheck.allowed) {
-      return res.status(429).json({
-        error: `Забагато невдалих спроб входу. Задля безпеки доступ заблоковано на ${rateCheck.remainingLockoutSeconds} сек.`,
-        locked: true,
-        retryAfter: rateCheck.remainingLockoutSeconds,
-      });
-    }
-
     // Затримка проти таймінг-атак та автоматизованих скриптів
-    await new Promise((resolve) => setTimeout(resolve, 350));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     let body = req.body;
     if (typeof body === 'string') {
@@ -213,11 +220,12 @@ export default async function authHandler(req: any, res: any) {
       }
     }
 
-    const inputUser = String(body?.username || '').trim();
+    const inputUser = String(body?.username || '');
     const inputPass = String(body?.password || '');
 
     const check = validateCredentials(inputUser, inputPass);
 
+    // Якщо облікові дані правильні — миттєво авторизуємо та скидаємо будь-які блокування
     if (check.valid) {
       resetAttempts(ip);
       const token = generateAdminToken(check.username);
@@ -231,11 +239,21 @@ export default async function authHandler(req: any, res: any) {
       });
     }
 
+    // Якщо дані неправильні — перевіряємо стан блокування
+    const rateCheck = checkRateLimit(ip);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        error: `Забагато невдалих спроб входу. Задля безпеки доступ заблоковано на ${rateCheck.remainingLockoutSeconds} сек.`,
+        locked: true,
+        retryAfter: rateCheck.remainingLockoutSeconds,
+      });
+    }
+
     // Реєструємо невдалу спробу
     const failInfo = recordFailedAttempt(ip);
     if (failInfo.locked) {
       return res.status(429).json({
-        error: `Невірний логін або пароль. Ви перевищили кількість спроб (5). Доступ заблоковано на 15 хвилин.`,
+        error: `Невірний логін або пароль. Перевищено ліміт спроб. Спробуйте пізніше або введіть точні дані.`,
         locked: true,
         retryAfter: failInfo.remainingLockoutSeconds,
       });
