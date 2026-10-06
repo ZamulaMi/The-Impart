@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ArrowLeft,
   Plus,
@@ -31,6 +31,28 @@ import { RichArticleEditor } from './RichArticleEditor';
 import { TaxonomyManager } from './TaxonomyManager';
 import { AdminSecurityManager } from './AdminSecurityManager';
 import { getAuthHeaders } from '../services/auth';
+
+function toSafeString(val: any, fallback: string = ''): string {
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (val && typeof val === 'object') {
+    if (typeof val.name === 'string') return val.name;
+    if (typeof val.title === 'string') return val.title;
+  }
+  return fallback;
+}
+
+function toSafeArray(val: any): string[] {
+  if (Array.isArray(val)) {
+    return val
+      .map((item) => (typeof item === 'string' ? item : item?.name || String(item || '')))
+      .filter(Boolean);
+  }
+  if (typeof val === 'string') {
+    return val.split(',').map((s) => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 
 interface AdminPanelProps {
   articles: Article[];
@@ -560,22 +582,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
     });
   };
 
-  const filteredArticles = articles.filter((a) => {
-    const isPubUa = a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
-    const isPubEn = a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1;
+  const safeArticles = useMemo(() => {
+    if (!Array.isArray(articles)) return [];
+    return articles.filter((a): a is Article => Boolean(a && typeof a === 'object' && a.id));
+  }, [articles]);
 
-    if (filterStatus === 'published_ua') return isPubUa;
-    if (filterStatus === 'published_en') return isPubEn;
-    if (filterStatus === 'hidden') return !isPubUa && !isPubEn;
-    return true;
-  });
+  const filteredArticles = useMemo(() => {
+    return safeArticles.filter((a) => {
+      const isPubUa = a.published === true || String(a.published) === 'true' || (a.published as any) === 1;
+      const isPubEn = a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1;
 
-  const uaPublishedCount = articles.filter(
-    (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
-  ).length;
-  const enPublishedCount = articles.filter(
-    (a) => a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1
-  ).length;
+      if (filterStatus === 'published_ua') return isPubUa;
+      if (filterStatus === 'published_en') return isPubEn;
+      if (filterStatus === 'hidden') return !isPubUa && !isPubEn;
+      return true;
+    });
+  }, [safeArticles, filterStatus]);
+
+  const uaPublishedCount = useMemo(() => {
+    return safeArticles.filter(
+      (a) => a.published === true || String(a.published) === 'true' || (a.published as any) === 1
+    ).length;
+  }, [safeArticles]);
+
+  const enPublishedCount = useMemo(() => {
+    return safeArticles.filter(
+      (a) => a.publishedEn === true || String(a.publishedEn) === 'true' || (a.publishedEn as any) === 1
+    ).length;
+  }, [safeArticles]);
 
   return (
     <div className="min-h-screen bg-white text-black font-sans flex flex-col">
@@ -1567,7 +1601,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
             )}
 
-            {articles.length === 0 ? (
+            {safeArticles.length === 0 ? (
               <div className="text-center py-20 border border-dashed border-neutral-200">
                 <p className="text-neutral-500 text-sm mb-4">Наразі немає жодної статті.</p>
                 <button
@@ -1601,6 +1635,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                   const isTogglingEn = togglingId === `en_${art.id}`;
                   const timeDisplay = formatTimeAgoOrDate(art.createdAt, art.date, art.id, 'ua');
 
+                  const categoriesList = toSafeArray(art.categories).length > 0
+                    ? toSafeArray(art.categories)
+                    : toSafeArray(art.category);
+                  const categoriesDisplay = categoriesList.length > 0
+                    ? categoriesList.join(' / ')
+                    : toSafeString(art.category, 'Загальне');
+                  const topicsList = toSafeArray(art.topics);
+
                   return (
                     <div
                       key={art.id}
@@ -1613,8 +1655,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                       <div className="flex items-start gap-4">
                         {art.coverImage ? (
                           <img
-                            src={art.coverImage}
-                            alt={art.title}
+                            src={toSafeString(art.coverImage)}
+                            alt={toSafeString(art.title)}
                             className={`w-16 h-16 sm:w-20 sm:h-20 object-cover rounded shrink-0 bg-neutral-100 ${
                               !isPubUa && !isPubEn ? 'grayscale opacity-75' : ''
                             }`}
@@ -1660,9 +1702,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                             <span className="text-neutral-300">•</span>
                             <span className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
-                              {art.categories && art.categories.length > 0
-                                ? art.categories.join(' / ')
-                                : art.category}
+                              {categoriesDisplay}
                             </span>
                             {timeDisplay && (
                               <>
@@ -1674,26 +1714,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                           {/* ГОЛОВНА НАЗВА В СПИСКУ ЗАВЖДИ УКРАЇНСЬКОЮ */}
                           <h2 className="text-base sm:text-lg font-serif font-medium text-black group-hover:text-neutral-700 transition-colors">
-                            {art.title}
+                            {toSafeString(art.title, 'Без назви')}
                           </h2>
 
                           {/* Додаткова плашка, якщо є англійський переклад */}
                           {art.titleEn && (
                             <p className="text-xs text-neutral-400 italic mt-0.5 flex items-center gap-1">
                               <span>EN:</span>
-                              <span>{art.titleEn}</span>
+                              <span>{toSafeString(art.titleEn)}</span>
                             </p>
                           )}
 
                           {art.excerpt && (
                             <p className="text-xs text-neutral-500 line-clamp-1 mt-1 max-w-xl">
-                              {art.excerpt}
+                              {toSafeString(art.excerpt)}
                             </p>
                           )}
 
-                          {art.topics && art.topics.length > 0 && (
+                          {topicsList.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
-                              {art.topics.map((t) => (
+                              {topicsList.map((t) => (
                                 <span
                                   key={t}
                                   className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded"
@@ -1705,7 +1745,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           )}
 
                           <p className="text-[11px] text-neutral-400 mt-1">
-                            {art.author}
+                            {toSafeString(art.author, 'Редакція The Impart')}
                           </p>
                         </div>
                       </div>

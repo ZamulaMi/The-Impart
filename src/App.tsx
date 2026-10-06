@@ -11,6 +11,7 @@ import { AdminLogin } from './components/AdminLogin';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
 import { RubricsModal } from './components/RubricsModal';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { formatTimeAgoOrDate } from './utils/date';
 import { getStoredTaxonomies, saveStoredTaxonomies } from './utils/taxonomies';
 import { getAuthToken, getAuthHeaders, verifyAdminSession, logoutAdmin } from './services/auth';
@@ -775,19 +776,21 @@ export default function App() {
     }
 
     return (
-      <AdminPanel
-        articles={articles}
-        onSaveArticle={handleSaveArticle}
-        onDeleteArticle={handleDeleteArticle}
-        onExitAdmin={() => navigateTo('main')}
-        onLogout={handleAdminLogout}
-        onViewArticleOnSite={(id) => navigateTo('main', id)}
-        socialLinks={socialLinks}
-        onSaveSocialLinks={handleSaveSocialLinks}
-        onRefreshSocialLinks={fetchSocialLinksFromDb}
-        taxonomies={taxonomies}
-        onSaveTaxonomies={handleSaveTaxonomies}
-      />
+      <ErrorBoundary fallbackTitle="Помилка завантаження панелі керування">
+        <AdminPanel
+          articles={articles}
+          onSaveArticle={handleSaveArticle}
+          onDeleteArticle={handleDeleteArticle}
+          onExitAdmin={() => navigateTo('main')}
+          onLogout={handleAdminLogout}
+          onViewArticleOnSite={(id) => navigateTo('main', id)}
+          socialLinks={socialLinks}
+          onSaveSocialLinks={handleSaveSocialLinks}
+          onRefreshSocialLinks={fetchSocialLinksFromDb}
+          taxonomies={taxonomies}
+          onSaveTaxonomies={handleSaveTaxonomies}
+        />
+      </ErrorBoundary>
     );
   }
 
