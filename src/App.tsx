@@ -553,9 +553,18 @@ export default function App() {
 
     window.addEventListener('popstate', handleLocationChange);
     window.addEventListener('hashchange', handleLocationChange);
+    const handleAdminKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'A' || e.key === 'a')) {
+        e.preventDefault();
+        navigateTo('admin');
+      }
+    };
+    window.addEventListener('keydown', handleAdminKey);
+
     return () => {
       window.removeEventListener('popstate', handleLocationChange);
       window.removeEventListener('hashchange', handleLocationChange);
+      window.removeEventListener('keydown', handleAdminKey);
     };
   }, []);
 
@@ -928,13 +937,24 @@ export default function App() {
             })}
           </nav>
 
-          {/* Права сторона: кнопка пошуку (і на мобільних, і на десктопі) */}
-          <div className="z-20 flex items-center justify-end">
+          {/* Права сторона: кнопка входу до редакції та пошук */}
+          <div className="z-20 flex items-center justify-end gap-1 sm:gap-2">
+            <button
+              type="button"
+              onClick={() => navigateTo('admin')}
+              aria-label="Вхід до панелі керування"
+              title="Панель редакції"
+              className="text-neutral-500 hover:text-black active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center gap-1.5 text-xs py-1.5 px-2.5 rounded-md hover:bg-neutral-100"
+            >
+              <Lock className="w-3.5 h-3.5 stroke-[1.8]" />
+              <span className="hidden sm:inline font-sans text-xs">Редакція</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
               aria-label="Пошук"
-              className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-10 h-10 -mr-2"
+              className="text-black hover:opacity-60 active:scale-95 transition-all cursor-pointer focus:outline-none flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 -mr-2"
             >
               <Search className="w-5 h-5 stroke-[1.8]" />
             </button>
@@ -953,6 +973,7 @@ export default function App() {
         siteLang={siteLang}
         onSwitchLang={handleSetLang}
         onOpenSearch={() => setIsSearchOpen(true)}
+        onOpenAdmin={() => navigateTo('admin')}
       />
 
       {/* Центральна частина (Body) зі статтями */}

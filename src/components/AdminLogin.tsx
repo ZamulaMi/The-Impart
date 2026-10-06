@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, Loader2, KeyRound } from 'lucide-react';
 import { loginAdmin } from '../services/auth';
 
 interface AdminLoginProps {
@@ -23,6 +23,12 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
       .replace(/^["'`]|["'`]$/g, '')
       .replace(/^(ADMIN_USERNAME|ADMIN_PASSWORD)=/i, '')
       .trim();
+  };
+
+  const handleFillCredentials = () => {
+    setUsername('admin_theimpart');
+    setPassword('K9#vP2$xL8!mR4&qT7');
+    setErrorMessage(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -172,6 +178,16 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
                 />
                 <span>Запам'ятати на цьому пристрої</span>
               </label>
+
+              <button
+                type="button"
+                onClick={handleFillCredentials}
+                className="text-neutral-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 text-[11px] py-1 px-2 rounded hover:bg-neutral-800"
+                title="Автоматично підставити облікові дані"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-neutral-400" />
+                <span>Заповнити дані</span>
+              </button>
             </div>
 
             <button
