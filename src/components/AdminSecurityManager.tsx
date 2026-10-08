@@ -20,6 +20,7 @@ import {
   getAdminAccountInfo,
   AdminAccountInfo,
 } from '../services/auth';
+import { formatErrorMessage } from '../utils/errors';
 
 interface AdminSecurityManagerProps {
   showNotification: (msg: string) => void;
@@ -157,10 +158,10 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
         setConfirmPassword('');
         await loadInfo();
       } else {
-        setErrorMessage(res.error || 'Не вдалося оновити облікові дані.');
+        setErrorMessage(formatErrorMessage(res.error, 'Не вдалося оновити облікові дані.'));
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Сталася непередбачена помилка.');
+      setErrorMessage(formatErrorMessage(err, 'Сталася непередбачена помилка.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -185,10 +186,10 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
         setSuccessMessage('Облікові дані скинуто до значень за замовчуванням.');
         await loadInfo();
       } else {
-        setResetError(res.error || 'Не вдалося скинути облікові дані.');
+        setResetError(formatErrorMessage(res.error, 'Не вдалося скинути облікові дані.'));
       }
     } catch (err: any) {
-      setResetError(err?.message || 'Помилка виконання запиту.');
+      setResetError(formatErrorMessage(err, 'Помилка виконання запиту.'));
     } finally {
       setIsResetting(false);
     }
@@ -268,7 +269,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
           <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
           <div>
             <p className="font-medium">Помилка оновлення даних</p>
-            <p className="text-xs text-red-700 mt-1">{errorMessage}</p>
+            <p className="text-xs text-red-700 mt-1">{formatErrorMessage(errorMessage)}</p>
           </div>
         </div>
       )}
@@ -488,7 +489,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
 
             {resetError && (
               <div className="text-xs text-red-600 font-medium">
-                {resetError}
+                {formatErrorMessage(resetError)}
               </div>
             )}
 

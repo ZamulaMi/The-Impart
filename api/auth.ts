@@ -433,6 +433,8 @@ export default async function authHandler(req: any, res: any) {
     return res.status(200).end();
   }
 
+  try {
+
   const url = req.url || '';
   const ip = getClientIp(req);
   const queryAction = req.query?.action || '';
@@ -649,5 +651,14 @@ export default async function authHandler(req: any, res: any) {
     });
   }
 
-  return res.status(404).json({ error: 'Endpoint not found' });
+    return res.status(404).json({ error: 'Endpoint not found' });
+  } catch (err: any) {
+    console.error('Unhandled authHandler error:', err);
+    if (!res.headersSent) {
+      return res.status(500).json({
+        success: false,
+        error: typeof err?.message === 'string' ? err.message : 'Помилка сервера автентифікації',
+      });
+    }
+  }
 }

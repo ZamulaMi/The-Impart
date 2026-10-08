@@ -31,6 +31,7 @@ import { RichArticleEditor } from './RichArticleEditor';
 import { TaxonomyManager } from './TaxonomyManager';
 import { AdminSecurityManager } from './AdminSecurityManager';
 import { getAuthHeaders } from '../services/auth';
+import { formatErrorMessage } from '../utils/errors';
 
 interface AdminPanelProps {
   articles?: Article[];
@@ -349,7 +350,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
       setIsCreatingNew(false);
     } catch (err: any) {
       console.error('Save error:', err);
-      setErrorMsg(err.message || 'Помилка збереження у базі даних.');
+      setErrorMsg(formatErrorMessage(err, 'Помилка збереження у базі даних.'));
     } finally {
       setIsSaving(false);
     }
@@ -1431,7 +1432,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
               {/* Повідомлення про помилку збереження */}
               {errorMsg && (
                 <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded">
-                  {errorMsg}
+                  {formatErrorMessage(errorMsg)}
                 </div>
               )}
 
@@ -1661,9 +1662,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                             <span className="text-neutral-300">•</span>
                             <span className="text-[11px] uppercase tracking-wider text-neutral-500 font-medium">
-                              {art.categories && art.categories.length > 0
-                                ? art.categories.join(' / ')
-                                : art.category}
+                              {Array.isArray(art.categories) && art.categories.length > 0
+                                ? art.categories.map((c: any) => typeof c === 'string' ? c : c?.name || String(c)).join(' / ')
+                                : typeof art.category === 'string'
+                                ? art.category
+                                : (art.category as any)?.name || (art.category as any)?.title || ''}
                             </span>
                             {timeDisplay && (
                               <>
@@ -1675,38 +1678,41 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
 
                           {/* ГОЛОВНА НАЗВА В СПИСКУ ЗАВЖДИ УКРАЇНСЬКОЮ */}
                           <h2 className="text-base sm:text-lg font-serif font-medium text-black group-hover:text-neutral-700 transition-colors">
-                            {art.title}
+                            {typeof art.title === 'string' ? art.title : (art.title as any)?.name || String(art.title || '')}
                           </h2>
 
                           {/* Додаткова плашка, якщо є англійський переклад */}
                           {art.titleEn && (
                             <p className="text-xs text-neutral-400 italic mt-0.5 flex items-center gap-1">
                               <span>EN:</span>
-                              <span>{art.titleEn}</span>
+                              <span>{typeof art.titleEn === 'string' ? art.titleEn : String(art.titleEn)}</span>
                             </p>
                           )}
 
                           {art.excerpt && (
                             <p className="text-xs text-neutral-500 line-clamp-1 mt-1 max-w-xl">
-                              {art.excerpt}
+                              {typeof art.excerpt === 'string' ? art.excerpt : String(art.excerpt)}
                             </p>
                           )}
 
-                          {art.topics && art.topics.length > 0 && (
+                          {Array.isArray(art.topics) && art.topics.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
-                              {art.topics.map((t) => (
-                                <span
-                                  key={t}
-                                  className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded"
-                                >
-                                  #{t}
-                                </span>
-                              ))}
+                              {art.topics.map((t: any, idx: number) => {
+                                const topicStr = typeof t === 'string' ? t : t?.name || String(t);
+                                return (
+                                  <span
+                                    key={`${topicStr}_${idx}`}
+                                    className="text-[10px] text-neutral-500 bg-neutral-100 px-1.5 py-0.5 rounded"
+                                  >
+                                    #{topicStr}
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
 
                           <p className="text-[11px] text-neutral-400 mt-1">
-                            {art.author}
+                            {typeof art.author === 'string' ? art.author : (art.author as any)?.name || String(art.author || '')}
                           </p>
                         </div>
                       </div>

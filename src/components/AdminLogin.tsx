@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, KeyRound, Loader2 } from 'lucide-react';
 import { loginAdmin } from '../services/auth';
+import { formatErrorMessage } from '../utils/errors';
 
 interface AdminLoginProps {
   onLoginSuccess: () => void;
@@ -39,7 +40,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
     if (result.success) {
       onLoginSuccess();
     } else {
-      setErrorMessage(result.error || 'Невірний логін або пароль.');
+      setErrorMessage(formatErrorMessage(result.error, 'Невірний логін або пароль.'));
       if (result.remainingAttempts !== undefined) {
         setRemainingAttempts(result.remainingAttempts);
       }
@@ -101,7 +102,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
             <div className="mb-6 p-3.5 bg-red-950/60 border border-red-800/80 rounded-lg text-xs text-red-200 flex items-start gap-2.5 animate-fade-in">
               <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="font-medium">{errorMessage}</p>
+                <p className="font-medium">{formatErrorMessage(errorMessage)}</p>
                 {remainingAttempts !== null && remainingAttempts > 0 && !isLocked && (
                   <p className="text-[11px] text-red-300/80 mt-1">
                     Залишилось спроб до блокування: <strong className="text-white">{remainingAttempts}</strong>

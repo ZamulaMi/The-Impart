@@ -35,6 +35,7 @@ import {
 import { ContentRenderer } from './ContentRenderer';
 import { markdownToHtml } from '../utils/editorConverter';
 import { getAuthHeaders } from '../services/auth';
+import { formatErrorMessage } from '../utils/errors';
 
 interface RichArticleEditorProps {
   value: string;
@@ -591,7 +592,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
 
       setImageUrl(finalUrl);
     } catch (err: any) {
-      setUploadError(err?.message || 'Помилка обробки файлу');
+      setUploadError(formatErrorMessage(err, 'Помилка обробки файлу'));
     } finally {
       setIsUploading(false);
     }
@@ -1625,7 +1626,7 @@ export const RichArticleEditor: React.FC<RichArticleEditorProps> = ({
                       </div>
                     </div>
 
-                    {uploadError && <div className="text-xs text-red-600 mt-2">{uploadError}</div>}
+                    {uploadError && <div className="text-xs text-red-600 mt-2">{formatErrorMessage(uploadError)}</div>}
 
                     {imageUrl && (
                       <div className="mt-3 p-2.5 bg-neutral-100 rounded-md flex items-center gap-3 border border-neutral-200">

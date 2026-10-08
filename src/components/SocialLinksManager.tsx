@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, Save, Check, RefreshCw } from 'lucide-react';
-import { SiteSocialLinks, SocialLinksSet, DEFAULT_SOCIAL_LINKS } from '../types';
-
-const normalizeSocialLinks = (links?: SiteSocialLinks): SiteSocialLinks => ({
-  ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(links?.ua || {}) },
-  en: { ...DEFAULT_SOCIAL_LINKS.en, ...(links?.en || {}) },
-});
+import { SiteSocialLinks, SocialLinksSet } from '../types';
+import { formatErrorMessage } from '../utils/errors';
 
 interface SocialLinksManagerProps {
   socialLinks: SiteSocialLinks;
@@ -21,7 +17,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   showNotification,
 }) => {
   const [activeLangTab, setActiveLangTab] = useState<'ua' | 'en'>('ua');
-  const [formData, setFormData] = useState<SiteSocialLinks>(() => normalizeSocialLinks(socialLinks));
+  const [formData, setFormData] = useState<SiteSocialLinks>(socialLinks);
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -30,7 +26,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
 
   useEffect(() => {
     if (!hasChanges) {
-      setFormData(normalizeSocialLinks(socialLinks));
+      setFormData(socialLinks);
     }
   }, [socialLinks, hasChanges]);
 
@@ -140,7 +136,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
     } catch (err: any) {
       console.error('Save social links error:', err);
       setErrorMessage(
-        err?.message || 'Помилка збереження на сервері. Спробуйте ще раз.'
+        formatErrorMessage(err, 'Помилка збереження на сервері. Спробуйте ще раз.')
       );
       showNotification('Помилка збереження на сервері');
     } finally {
@@ -213,7 +209,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
       {/* Повідомлення про помилку */}
       {errorMessage && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-800 text-xs rounded flex items-center justify-between">
-          <span>{errorMessage}</span>
+          <span>{formatErrorMessage(errorMessage)}</span>
           <button
             type="button"
             onClick={() => setErrorMessage(null)}

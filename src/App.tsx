@@ -124,16 +124,20 @@ interface ArticleCardProps {
 
 function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect }: ArticleCardProps) {
   const isEn = siteLang === 'en';
-  const title = isEn && article.titleEn ? article.titleEn : article.title;
-  const excerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
+  const rawTitle = isEn && article.titleEn ? article.titleEn : article.title;
+  const title = typeof rawTitle === 'string' ? rawTitle : (rawTitle as any)?.name || String(rawTitle || '');
+  const rawExcerpt = isEn && article.excerptEn ? article.excerptEn : article.excerpt;
+  const excerpt = typeof rawExcerpt === 'string' ? rawExcerpt : String(rawExcerpt || '');
 
-  const categoriesList =
+  const rawCategoriesList =
     isEn && article.categoriesEn && article.categoriesEn.length > 0
       ? article.categoriesEn
       : article.categories && article.categories.length > 0
       ? article.categories
       : (isEn && article.categoryEn ? [article.categoryEn] : (article.category ? [article.category] : []));
-  const category = categoriesList.join(' / ');
+  const category = Array.isArray(rawCategoriesList)
+    ? rawCategoriesList.map((c: any) => typeof c === 'string' ? c : c?.name || String(c)).join(' / ')
+    : '';
   const timeAgo = formatTimeAgoOrDate(article.createdAt, article.date, article.id, siteLang);
 
   // Класи пропорцій для фото:
@@ -431,14 +435,22 @@ export default function App() {
     }
   };
 
+  const sanitizeArticleList = (list: any): Article[] => {
+    if (!Array.isArray(list)) return [];
+    return list.filter((a): a is Article => {
+      return Boolean(a && typeof a === 'object' && a.id && typeof a.id === 'string' && (a.title || a.titleEn));
+    });
+  };
+
   const fetchArticlesFromDb = async () => {
     // 1. Пряме завантаження статей із хмарної бази Neon
     try {
       const cloudArticles = await fetchArticlesFromCloud();
-      if (cloudArticles && Array.isArray(cloudArticles) && cloudArticles.length > 0) {
-        setArticles(cloudArticles);
+      const sanitized = sanitizeArticleList(cloudArticles);
+      if (sanitized.length > 0) {
+        setArticles(sanitized);
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(cloudArticles));
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
         } catch (e) {
           console.error(e);
         }
@@ -457,10 +469,11 @@ export default function App() {
       });
       if (res.ok) {
         const data = await res.json();
-        if (Array.isArray(data)) {
-          setArticles(data);
+        const sanitized = sanitizeArticleList(data);
+        if (sanitized.length > 0) {
+          setArticles(sanitized);
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           } catch (e) {
             console.error(e);
           }
@@ -471,7 +484,11 @@ export default function App() {
       try {
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
-          setArticles(JSON.parse(cached));
+          const parsed = JSON.parse(cached);
+          const sanitized = sanitizeArticleList(parsed);
+          if (sanitized.length > 0) {
+            setArticles(sanitized);
+          }
         }
       } catch (e) {
         console.error(e);

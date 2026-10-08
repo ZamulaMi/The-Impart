@@ -1,5 +1,6 @@
 import { Article, SiteSocialLinks } from '../types';
 import { getAuthHeaders } from './auth';
+import { formatErrorMessage } from '../utils/errors';
 
 // Безпечний клієнт: усі запити проходять через захищений серверний API (/api/*),
 // жодні ключі або реквізити бази даних ніколи не передаються в браузер клієнта.
@@ -33,7 +34,7 @@ export async function saveSocialLinksToCloud(links: SiteSocialLinks): Promise<Si
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Помилка збереження налаштувань на сервері');
+    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка збереження налаштувань на сервері'));
   }
 
   const saved = await res.json();
@@ -71,7 +72,7 @@ export async function saveArticleToCloud(article: Article): Promise<Article> {
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Помилка збереження статті на сервері');
+    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка збереження статті на сервері'));
   }
 
   const saved = await res.json();
@@ -89,7 +90,7 @@ export async function deleteArticleFromCloud(id: string): Promise<boolean> {
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || 'Помилка видалення статті на сервері');
+    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка видалення статті на сервері'));
   }
 
   return true;

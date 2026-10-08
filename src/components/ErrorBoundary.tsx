@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertCircle, RotateCcw, Home } from 'lucide-react';
+import { formatErrorMessage } from '../utils/errors';
 
 interface Props {
   children: ReactNode;
@@ -54,8 +55,8 @@ export class ErrorBoundary extends Component<Props, State> {
               Компонент не зміг відобразитися. Ми зберегли ваші дані. Ви можете спробувати перезавантажити сторінку або повернутися на головний сайт.
             </p>
             {this.state.error && (
-              <pre className="text-[11px] text-red-300 bg-black/50 border border-neutral-800 p-3 rounded mb-6 text-left overflow-x-auto max-h-32 font-mono">
-                {this.state.error.message || String(this.state.error)}
+              <pre className="text-[11px] text-red-300 bg-black/50 border border-neutral-800 p-3 rounded mb-6 text-left overflow-x-auto max-h-32 font-mono whitespace-pre-wrap break-words">
+                {formatErrorMessage(this.state.error, 'Невідома помилка виконання')}
               </pre>
             )}
             <div className="flex flex-col sm:flex-row gap-3 justify-center">

@@ -1,4 +1,5 @@
 // Сервіс для збереження та передачі токена адміністратора
+import { formatErrorMessage } from '../utils/errors';
 
 const STORAGE_KEY = 'impart_admin_token';
 const USER_KEY = 'impart_admin_username';
@@ -113,7 +114,7 @@ export async function loginAdmin(
 
     return {
       success: false,
-      error: data.error || 'Помилка входу в систему',
+      error: formatErrorMessage(data.error || data, 'Помилка входу в систему'),
       remainingAttempts: data.remainingAttempts,
       locked: data.locked,
       retryAfter: data.retryAfter,
@@ -121,7 +122,7 @@ export async function loginAdmin(
   } catch (err: any) {
     return {
       success: false,
-      error: err?.message || 'Не вдалося зв\'язатися з сервером',
+      error: formatErrorMessage(err, "Не вдалося зв'язатися з сервером"),
     };
   }
 }
@@ -278,9 +279,9 @@ export async function changeAdminCredentials(
       return { success: true, message: data.message || 'Логін та пароль успішно оновлено' };
     }
 
-    return { success: false, error: data.error || 'Не вдалося оновити облікові дані' };
+    return { success: false, error: formatErrorMessage(data.error || data, 'Не вдалося оновити облікові дані') };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Помилка виконання запиту' };
+    return { success: false, error: formatErrorMessage(err, 'Помилка виконання запиту') };
   }
 }
 
@@ -328,8 +329,8 @@ export async function resetAdminCredentials(
       return { success: true, message: data.message || 'Облікові дані скинуто до стандартних' };
     }
 
-    return { success: false, error: data.error || 'Не вдалося скинути облікові дані' };
+    return { success: false, error: formatErrorMessage(data.error || data, 'Не вдалося скинути облікові дані') };
   } catch (err: any) {
-    return { success: false, error: err?.message || 'Помилка виконання запиту' };
+    return { success: false, error: formatErrorMessage(err, 'Помилка виконання запиту') };
   }
 }
