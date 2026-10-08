@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, Save, Check, RefreshCw } from 'lucide-react';
-import { SiteSocialLinks, SocialLinksSet } from '../types';
+import { SiteSocialLinks, SocialLinksSet, DEFAULT_SOCIAL_LINKS } from '../types';
+
+const normalizeSocialLinks = (links?: SiteSocialLinks): SiteSocialLinks => ({
+  ua: { ...DEFAULT_SOCIAL_LINKS.ua, ...(links?.ua || {}) },
+  en: { ...DEFAULT_SOCIAL_LINKS.en, ...(links?.en || {}) },
+});
 
 interface SocialLinksManagerProps {
   socialLinks: SiteSocialLinks;
@@ -16,7 +21,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
   showNotification,
 }) => {
   const [activeLangTab, setActiveLangTab] = useState<'ua' | 'en'>('ua');
-  const [formData, setFormData] = useState<SiteSocialLinks>(socialLinks);
+  const [formData, setFormData] = useState<SiteSocialLinks>(() => normalizeSocialLinks(socialLinks));
   const [isSaving, setIsSaving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -25,7 +30,7 @@ export const SocialLinksManager: React.FC<SocialLinksManagerProps> = ({
 
   useEffect(() => {
     if (!hasChanges) {
-      setFormData(socialLinks);
+      setFormData(normalizeSocialLinks(socialLinks));
     }
   }, [socialLinks, hasChanges]);
 

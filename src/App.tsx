@@ -8,6 +8,7 @@ import { Search, X, Menu, ChevronRight, Lock } from 'lucide-react';
 import { Article, SiteLanguage, SiteSocialLinks, TaxonomiesData } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLogin } from './components/AdminLogin';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { ArticleView } from './components/ArticleView';
 import { SearchModal } from './components/SearchModal';
 import { RubricsModal } from './components/RubricsModal';
@@ -775,19 +776,21 @@ export default function App() {
     }
 
     return (
-      <AdminPanel
-        articles={articles}
-        onSaveArticle={handleSaveArticle}
-        onDeleteArticle={handleDeleteArticle}
-        onExitAdmin={() => navigateTo('main')}
-        onLogout={handleAdminLogout}
-        onViewArticleOnSite={(id) => navigateTo('main', id)}
-        socialLinks={socialLinks}
-        onSaveSocialLinks={handleSaveSocialLinks}
-        onRefreshSocialLinks={fetchSocialLinksFromDb}
-        taxonomies={taxonomies}
-        onSaveTaxonomies={handleSaveTaxonomies}
-      />
+      <ErrorBoundary fallbackTitle="Помилка панелі керування">
+        <AdminPanel
+          articles={articles}
+          onSaveArticle={handleSaveArticle}
+          onDeleteArticle={handleDeleteArticle}
+          onExitAdmin={() => navigateTo('main')}
+          onLogout={handleAdminLogout}
+          onViewArticleOnSite={(id) => navigateTo('main', id)}
+          socialLinks={socialLinks}
+          onSaveSocialLinks={handleSaveSocialLinks}
+          onRefreshSocialLinks={fetchSocialLinksFromDb}
+          taxonomies={taxonomies}
+          onSaveTaxonomies={handleSaveTaxonomies}
+        />
+      </ErrorBoundary>
     );
   }
 

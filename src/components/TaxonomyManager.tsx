@@ -15,6 +15,10 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
   articles,
   showNotification,
 }) => {
+  const safeCategories = Array.isArray(taxonomies?.categories) ? taxonomies.categories : [];
+  const safeTopics = Array.isArray(taxonomies?.topics) ? taxonomies.topics : [];
+  const safeArticles = Array.isArray(articles) ? articles : [];
+
   // Нова рубрика
   const [newCatName, setNewCatName] = useState('');
   const [newCatNameEn, setNewCatNameEn] = useState('');
@@ -25,15 +29,16 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
 
   // Підрахунок використання рубрик
   const getCategoryCount = (catName: string) => {
-    return articles.filter(
-      (a) => a.category?.trim().toLowerCase() === catName.trim().toLowerCase()
+    return safeArticles.filter(
+      (a) => a && a.category?.trim().toLowerCase() === catName.trim().toLowerCase()
     ).length;
   };
 
   // Підрахунок використання тем
   const getTopicCount = (topicName: string) => {
-    return articles.filter(
+    return safeArticles.filter(
       (a) =>
+        a &&
         a.topics &&
         a.topics.some((t) => t.trim().toLowerCase() === topicName.trim().toLowerCase())
     ).length;
@@ -46,7 +51,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
     if (!cleanName) return;
 
     if (
-      taxonomies.categories.some(
+      safeCategories.some(
         (c) => c.name.toLowerCase() === cleanName.toLowerCase()
       )
     ) {
@@ -61,8 +66,8 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
     };
 
     const updated: TaxonomiesData = {
-      ...taxonomies,
-      categories: [...taxonomies.categories, newCat],
+      categories: [...safeCategories, newCat],
+      topics: safeTopics,
     };
 
     onSaveTaxonomies(updated);
@@ -81,8 +86,8 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
 
     if (window.confirm(confirmMsg)) {
       const updated: TaxonomiesData = {
-        ...taxonomies,
-        categories: taxonomies.categories.filter((c) => c.id !== id),
+        categories: safeCategories.filter((c) => c.id !== id),
+        topics: safeTopics,
       };
       onSaveTaxonomies(updated);
       showNotification(`Рубрику «${name}» видалено`);
@@ -96,7 +101,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
     if (!cleanName) return;
 
     if (
-      taxonomies.topics.some(
+      safeTopics.some(
         (t) => t.name.toLowerCase() === cleanName.toLowerCase()
       )
     ) {
@@ -111,8 +116,8 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
     };
 
     const updated: TaxonomiesData = {
-      ...taxonomies,
-      topics: [...taxonomies.topics, newTopic],
+      categories: safeCategories,
+      topics: [...safeTopics, newTopic],
     };
 
     onSaveTaxonomies(updated);
@@ -131,8 +136,8 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
 
     if (window.confirm(confirmMsg)) {
       const updated: TaxonomiesData = {
-        ...taxonomies,
-        topics: taxonomies.topics.filter((t) => t.id !== id),
+        categories: safeCategories,
+        topics: safeTopics.filter((t) => t.id !== id),
       };
       onSaveTaxonomies(updated);
       showNotification(`Тему «${name}» видалено`);
@@ -152,7 +157,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
         </div>
         <div className="flex items-center gap-2 text-xs text-neutral-500 bg-neutral-50 px-3 py-1.5 rounded-md border border-neutral-200/60 self-start sm:self-auto">
           <Sparkles className="w-3.5 h-3.5 text-neutral-400" />
-          <span>{taxonomies.categories.length} рубрик • {taxonomies.topics.length} тем</span>
+          <span>{safeCategories.length} рубрик • {safeTopics.length} тем</span>
         </div>
       </div>
 
@@ -162,7 +167,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
           <div className="flex items-center gap-2 pb-3 border-b border-neutral-200">
             <Folder className="w-4 h-4 text-black" />
             <h2 className="text-sm uppercase tracking-wider font-semibold text-black">
-              Рубрики ({taxonomies.categories.length})
+              Рубрики ({safeCategories.length})
             </h2>
           </div>
 
@@ -200,7 +205,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
 
           {/* Список рубрик */}
           <div className="space-y-2">
-            {taxonomies.categories.map((cat) => {
+            {safeCategories.map((cat) => {
               const count = getCategoryCount(cat.name);
               return (
                 <div
@@ -242,7 +247,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
           <div className="flex items-center gap-2 pb-3 border-b border-neutral-200">
             <Tag className="w-4 h-4 text-black" />
             <h2 className="text-sm uppercase tracking-wider font-semibold text-black">
-              Теми / Теги ({taxonomies.topics.length})
+              Теми / Теги ({safeTopics.length})
             </h2>
           </div>
 
@@ -280,7 +285,7 @@ export const TaxonomyManager: React.FC<TaxonomyManagerProps> = ({
 
           {/* Список тем у вигляді бейджів */}
           <div className="flex flex-wrap gap-2 pt-1">
-            {taxonomies.topics.map((topic) => {
+            {safeTopics.map((topic) => {
               const count = getTopicCount(topic.name);
               return (
                 <div

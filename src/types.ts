@@ -55,3 +55,20 @@ export interface SiteSocialLinks {
   ua: SocialLinksSet;
   en: SocialLinksSet;
 }
+
+export const DEFAULT_SOCIAL_LINKS: SiteSocialLinks = {
+  ua: {
+    telegram: 'https://t.me/impart',
+    instagram: 'https://instagram.com/impart',
+    x: 'https://x.com/impart_ua',
+    youtube: 'https://youtube.com/@impart_ua',
+    threads: 'https://threads.net/@impart_ua',
+  },
+  en: {
+    telegram: 'https://t.me/impart_en',
+    instagram: 'https://instagram.com/impart_en',
+    x: 'https://x.com/impart_en',
+    youtube: 'https://youtube.com/@impart_en',
+    threads: 'https://threads.net/@impart_en',
+  },
+};

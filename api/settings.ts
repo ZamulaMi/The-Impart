@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { getNeonSql } from './articles';
+import { getNeonSql } from './db';
 import { verifyAdminToken, extractToken } from './auth';
 
 export interface SocialLinksSet {

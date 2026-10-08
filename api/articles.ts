@@ -1,7 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { neon } from '@neondatabase/serverless';
+import { getNeonSql, cleanConnectionString } from './db';
 import { verifyAdminToken, extractToken } from './auth';
+
+export { getNeonSql, cleanConnectionString };
 
 export interface Article {
   id: string;
@@ -103,41 +105,43 @@ export const DEFAULT_ARTICLES: Article[] = [
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const ARTICLES_FILE = path.join(DATA_DIR, 'articles.json');
 
+const TMP_DATA_DIR = '/tmp';
+const ARTICLES_TMP_FILE = path.join(TMP_DATA_DIR, 'impart_articles.json');
+
 function ensureDataDir(): void {
   try {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
-  } catch (err) {
-    console.warn('Could not create data dir:', err);
-  }
+  } catch {}
 }
 
 function readArticlesFromFile(): Article[] | null {
-  try {
-    ensureDataDir();
-    if (fs.existsSync(ARTICLES_FILE)) {
-      const content = fs.readFileSync(ARTICLES_FILE, 'utf-8');
-      if (content && content.trim()) {
-        const parsed = JSON.parse(content);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+  const paths = [ARTICLES_FILE, ARTICLES_TMP_FILE];
+  for (const p of paths) {
+    try {
+      if (fs.existsSync(p)) {
+        const content = fs.readFileSync(p, 'utf-8');
+        if (content && content.trim()) {
+          const parsed = JSON.parse(content);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
         }
       }
-    }
-  } catch (err) {
-    console.warn('Error reading articles from disk file:', err);
+    } catch {}
   }
   return null;
 }
 
 function writeArticlesToFile(articles: Article[]): void {
-  try {
-    ensureDataDir();
-    fs.writeFileSync(ARTICLES_FILE, JSON.stringify(articles, null, 2), 'utf-8');
-    console.log(`Articles (${articles.length}) saved to disk: ${ARTICLES_FILE}`);
-  } catch (err) {
-    console.error('Error writing articles to disk file:', err);
+  const payload = JSON.stringify(articles, null, 2);
+  const paths = [ARTICLES_TMP_FILE, ARTICLES_FILE];
+  for (const p of paths) {
+    try {
+      if (p === ARTICLES_FILE) ensureDataDir();
+      fs.writeFileSync(p, payload, 'utf-8');
+    } catch {}
   }
 }
 
@@ -146,58 +150,6 @@ const initialArticlesFromFile = readArticlesFromFile();
 let inMemoryArticles: Article[] = initialArticlesFromFile || [...DEFAULT_ARTICLES];
 if (!initialArticlesFromFile) {
   writeArticlesToFile(inMemoryArticles);
-}
-
-// Очищення рядка підключення: автоматично витягує чистий postgresql://...
-export function cleanConnectionString(raw?: string): string | undefined {
-  if (!raw) return undefined;
-  const str = raw.trim();
-
-  const match = str.match(/postgres(?:ql)?:\/\/[^\s"'\`]+/i);
-  if (match) {
-    let extracted = match[0].trim();
-    extracted = extracted.replace(/[;"'\`\\]+$/, '').trim();
-    return extracted;
-  }
-
-  return undefined;
-}
-
-// Отримання клієнта Neon (виключно зі змінних середовища)
-export function getNeonSql(): any | null {
-  const candidateKeys = [
-    'DATABASE_URL',
-    'POSTGRES_URL',
-    'POSTGRES_PRISMA_URL',
-    'DATABASE_URL_UNPOOLED',
-    'POSTGRES_URL_NON_POOLING',
-    'POSTGRES_URL_NO_SSL',
-  ] as const;
-
-  let connectionString: string | undefined;
-
-  for (const k of candidateKeys) {
-    const val = cleanConnectionString(process.env[k]);
-    if (val) {
-      connectionString = val;
-      break;
-    }
-  }
-
-  // Якщо рядок передано через окремі змінні PGHOST / PGUSER
-  if (!connectionString && process.env.PGUSER && process.env.PGHOST && process.env.PGDATABASE) {
-    const user = process.env.PGUSER;
-    const pass = process.env.PGPASSWORD || '';
-    const host = process.env.PGHOST;
-    const db = process.env.PGDATABASE;
-    connectionString = `postgresql://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@${host}/${db}?sslmode=require`;
-  }
-
-  if (!connectionString) {
-    return null;
-  }
-
-  return neon(connectionString);
 }
 
 let isTableInitialized = false;

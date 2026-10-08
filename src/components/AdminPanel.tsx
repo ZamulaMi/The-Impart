@@ -33,32 +33,33 @@ import { AdminSecurityManager } from './AdminSecurityManager';
 import { getAuthHeaders } from '../services/auth';
 
 interface AdminPanelProps {
-  articles: Article[];
+  articles?: Article[];
   onSaveArticle: (article: Article) => Promise<void> | void;
   onDeleteArticle: (id: string) => Promise<void> | void;
   onExitAdmin: () => void;
   onLogout?: () => void;
   onViewArticleOnSite: (id: string) => void;
-  socialLinks: SiteSocialLinks;
+  socialLinks?: SiteSocialLinks;
   onSaveSocialLinks: (links: SiteSocialLinks) => Promise<void> | void;
   onRefreshSocialLinks?: () => Promise<void>;
-  taxonomies: TaxonomiesData;
+  taxonomies?: TaxonomiesData;
   onSaveTaxonomies: (data: TaxonomiesData) => void;
 }
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({
-  articles,
+  articles: rawArticles = [],
   onSaveArticle,
   onDeleteArticle,
   onExitAdmin,
   onLogout,
   onViewArticleOnSite,
-  socialLinks,
+  socialLinks = { ua: {}, en: {} },
   onSaveSocialLinks,
   onRefreshSocialLinks,
-  taxonomies,
+  taxonomies = { categories: [], topics: [] },
   onSaveTaxonomies,
 }) => {
+  const articles = Array.isArray(rawArticles) ? rawArticles.filter(Boolean) : [];
   // Розділ адмін-панелі: "Редактор статей", "Рубрики та теми", "Соц. мережі" або "Безпека та пароль"
   const [activeSection, setActiveSection] = useState<'articles' | 'taxonomies' | 'social_links' | 'security'>('articles');
 
@@ -1801,7 +1802,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                         {/* Видалення */}
                         <button
                           onClick={() => {
-                            if (confirm(`Видалити статтю «${art.title}» назавжди з бази даних?`)) {
+                            const isConfirmed = typeof window !== 'undefined' && window.confirm
+                              ? window.confirm(`Видалити статтю «${art.title || ''}» назавжди з бази даних?`)
+                              : true;
+                            if (isConfirmed) {
                               onDeleteArticle(art.id);
                               showNotification('Статтю назавжди видалено.');
                             }
