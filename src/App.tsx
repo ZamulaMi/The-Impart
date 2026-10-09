@@ -22,6 +22,7 @@ import {
   saveArticleToCloud,
   deleteArticleFromCloud,
 } from './services/db';
+import { SEED_ARTICLES } from './data/seedArticles';
 
 const STORAGE_KEY = 'the_impart_articles_v1';
 const LANG_STORAGE_KEY = 'the_impart_lang_v1';
@@ -279,8 +280,19 @@ export default function App() {
     saveStoredTaxonomies(data);
   };
 
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [articles, setArticles] = useState<Article[]>(() => {
+    try {
+      const cached = localStorage.getItem(STORAGE_KEY);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return SEED_ARTICLES;
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Активний розділ у шапці: 'news' | 'articles' | 'reviews' | null (null = головна стрічка)
   const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => {
@@ -437,18 +449,24 @@ export default function App() {
 
   const sanitizeArticleList = (list: any): Article[] => {
     if (!Array.isArray(list)) return [];
-    return list.filter((a): a is Article => {
-      return Boolean(a && typeof a === 'object' && a.id && typeof a.id === 'string' && (a.title || a.titleEn));
-    });
+    return list
+      .filter((a) => a && typeof a === 'object' && a.id !== undefined && (a.title || a.titleEn))
+      .map((a): Article => ({
+        ...a,
+        id: String(a.id),
+      }));
   };
 
   const fetchArticlesFromDb = async () => {
+    let loaded = false;
+
     // 1. Пряме завантаження статей із хмарної бази Neon
     try {
       const cloudArticles = await fetchArticlesFromCloud();
       const sanitized = sanitizeArticleList(cloudArticles);
       if (sanitized.length > 0) {
         setArticles(sanitized);
+        loaded = true;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
         } catch (e) {
@@ -472,6 +490,7 @@ export default function App() {
         const sanitized = sanitizeArticleList(data);
         if (sanitized.length > 0) {
           setArticles(sanitized);
+          loaded = true;
           try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitized));
           } catch (e) {
@@ -481,6 +500,10 @@ export default function App() {
       }
     } catch (err) {
       console.warn('Backend unavailable, checking local storage:', err);
+    }
+
+    // 3. Якщо сервер недоступний — підтягуємо локальний кеш або початкові матеріали редакції
+    if (!loaded) {
       try {
         const cached = localStorage.getItem(STORAGE_KEY);
         if (cached) {
@@ -488,14 +511,19 @@ export default function App() {
           const sanitized = sanitizeArticleList(parsed);
           if (sanitized.length > 0) {
             setArticles(sanitized);
+            loaded = true;
           }
         }
       } catch (e) {
         console.error(e);
       }
-    } finally {
-      setIsLoading(false);
     }
+
+    if (!loaded) {
+      setArticles((prev) => (prev && prev.length > 0 ? prev : SEED_ARTICLES));
+    }
+
+    setIsLoading(false);
   };
 
   // Завантаження статей та налаштувань із бази даних

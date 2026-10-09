@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { getNeonSql, cleanConnectionString } from './db';
 import { verifyAdminToken, extractToken } from './auth';
+import { SEED_ARTICLES } from '../src/data/seedArticles';
 
 export { getNeonSql, cleanConnectionString };
 
@@ -31,75 +32,8 @@ export interface Article {
   publishedEn?: boolean;
 }
 
-// Початкові статті за замовчуванням з українською та англійською версіями
-export const DEFAULT_ARTICLES: Article[] = [
-  {
-    id: '1',
-    title: 'Тиша як простір для нової форми думки',
-    excerpt: 'У світі надлишку інформації здатність сповільнитися перетворюється на рідкісну естетичну та інтелектуальну чесноту.',
-    content: "Справжня глибина починається там, де стихає фоновий шум. Сучасний темп життя нав'язує відчуття неперервної присутності, проте саме паузи між словами створюють ритм, а порожнеча на полотні визначає композицію.\n\nКоли ми відмовляємося від надлишкових деталей, залишається сутність. Це не просто мінімалізм у візуальному вимірі — це спосіб взаємодії зі світом, де кожна деталь набуває власної ваги.\n\nМистецтво уважності вимагає внутрішнього спокою. У тиші народжуються ідеї, які не потребують гучного проголошення, аби змінити сприйняття дійсності.",
-    category: 'Філософія',
-    author: 'Редакція The Impart',
-    coverImage: 'https://images.unsplash.com/photo-1507842229451-7f01be7a50d4?auto=format&fit=crop&w=1400&q=80',
-    date: '29 вересня 2026',
-    published: true,
-    titleEn: 'Silence as a Space for a New Form of Thought',
-    categoryEn: 'Philosophy',
-    excerptEn: 'In a world of information overflow, the ability to slow down transforms into a rare aesthetic and intellectual virtue.',
-    contentEn: "True depth begins where the background noise fades away. Modern pace of life imposes a sense of continuous presence, yet it is the pauses between words that create rhythm, and the empty space on canvas that defines the composition.\n\nWhen we discard superfluous details, essence remains. This is not merely minimalism in visual terms — it is a way of interacting with the world where every detail acquires its own weight.\n\nThe art of attentiveness requires inner quiet. In silence, ideas are born that do not need loud proclamation to change our perception of reality.",
-    publishedEn: true,
-  },
-  {
-    id: '2',
-    title: 'Архітектура спостереження: як простір формує досвід',
-    excerpt: 'Чисті лінії, природне світло та відсутність візуального шуму як основа свідомого сприйняття навколишнього середовища.',
-    content: "Простір навколо нас не є нейтральним. Він або розсіює нашу увагу, або збирає її в одну фокусну точку. Архітектура, яка поважає людину, не намагається вразити масштабом — вона створює умови для внутрішнього діалогу.\n\nСвітло, що падає крізь високі вікна, текстура натурального каменю чи дерева, біла стіна, на якій грають тіні дерев у другій половині дня — це прості речі, що повертають відчуття присутності тут і тепер.",
-    category: 'Архітектура',
-    author: 'Олена Кравченко',
-    coverImage: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1400&q=80',
-    date: '28 вересня 2026',
-    published: true,
-    titleEn: 'The Architecture of Observation: How Space Shapes Experience',
-    categoryEn: 'Architecture',
-    excerptEn: 'Clean lines, natural light, and the absence of visual noise as the foundation of conscious environmental perception.',
-    contentEn: "The space around us is never neutral. It either disperses our attention or gathers it into a single focal point. Architecture that respects the individual does not seek to overwhelm by scale — it creates conditions for interior dialogue.\n\nLight descending through tall windows, the texture of natural stone or wood, a white wall where tree shadows play in the late afternoon — these are simple elements that restore our sense of presence in the here and now.",
-    publishedEn: true,
-  },
-  {
-    id: 'news-1',
-    title: 'Міжнародна бієнале мінімалістичного дизайну відкривається в Кіото',
-    excerpt: 'Головна подія року для поціновувачів японської естетики вабі-сабі та сучасної скандинавської простоти.',
-    content: 'У Кіото стартувала щорічна виставка, присвячена гармонії форми та порожнечі. Провідні архітектори з усього світу представили просторові інсталяції, де ключову роль відіграє природне освітлення та натуральні матеріали.\n\nКуратори акцентують увагу на сповільненні темпу сприйняття та переосмисленні щоденних ритуалів спостереження.',
-    category: 'Новини',
-    author: 'Редакція The Impart',
-    coverImage: 'https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?auto=format&fit=crop&w=1200&q=80',
-    date: '2 жовтня 2026 р.',
-    createdAt: '2026-10-02T10:00:00.000Z',
-    published: true,
-    titleEn: 'International Biennale of Minimalist Design Opens in Kyoto',
-    categoryEn: 'News',
-    excerptEn: 'The main event of the year for admirers of Japanese wabi-sabi aesthetics and modern Scandinavian simplicity.',
-    contentEn: 'Kyoto hosts the annual exhibition dedicated to harmony of form and emptiness. Leading architects worldwide presented spatial installations where natural light and raw textures take center stage.',
-    publishedEn: true,
-  },
-  {
-    id: 'review-1',
-    title: 'Огляд: Монохромні видання Cereal та естетика нового номеру',
-    excerpt: 'Детальний погляд на візуальну культуру, типографіку та вибір фотоматеріалів в осінньому випуску журналу.',
-    content: 'Осінній номер Cereal вкотре доводить, що друковане видання може бути самостійним витвором мистецтва. Матовий папір високої щільності, вивірений кернінг та вишукана сітка верстки створюють відчуття спокою з першої сторінки.\n\nФотографічні серії побудовані на тонких нюансах сірого та теплого бежевого тонів, що надихає на вдумливе читання.',
-    category: 'Обзори',
-    author: 'Михайло Замула',
-    coverImage: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&w=1200&q=80',
-    date: '29 вересня 2026 р.',
-    createdAt: '2026-09-29T18:00:00.000Z',
-    published: true,
-    titleEn: 'Review: Cereal Monochrome Editions and New Issue Aesthetics',
-    categoryEn: 'Reviews',
-    excerptEn: 'An in-depth look at visual culture, typography, and curated imagery in the autumn edition.',
-    contentEn: 'The autumn issue of Cereal proves once again that print can be an independent piece of quiet art. Heavy matte paper, meticulous kerning, and generous margins induce contemplative tranquility.',
-    publishedEn: true,
-  },
-];
+// Початкові статті за замовчуванням (усі 14 актуальних матеріалів редакції)
+export const DEFAULT_ARTICLES: Article[] = SEED_ARTICLES;
 
 // Локальне збереження на диску сервера
 const DATA_DIR = path.resolve(process.cwd(), 'data');

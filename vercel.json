@@ -4,16 +4,17 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/auth/:action*",
-      "destination": "/api/auth?action=:action*"
+      "source": "/api/auth/:action",
+      "destination": "/api/auth?action=:action"
     },
     {
-      "source": "/api/:path*",
-      "destination": "/api/:path*"
-    },
-    {
-      "source": "/((?!api/).*)",
+      "source": "/((?!api/|uploads/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "functions": {
+    "api/*.ts": {
+      "includeFiles": "data/**"
+    }
+  }
 }
