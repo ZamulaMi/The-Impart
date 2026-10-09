@@ -101,13 +101,9 @@ export async function loginAdmin(
   retryAfter?: number;
 }> {
   const cleanUser = username.trim();
-  const isDefaultEditor =
-    (cleanUser === 'theimpart_editor' || cleanUser === 'admin') &&
-    password === 'Impart#2026!Sec_k9XvL4Q';
-  const isAlternativeEditor =
+  const isCorrectCredentials =
     (cleanUser === 'admin_theimpart' || cleanUser === 'admin') &&
     password === 'K9#vP2$xL8!mR4&qT7';
-  const isCorrectCredentials = isDefaultEditor || isAlternativeEditor;
 
   try {
     const payload = JSON.stringify({ action: 'login', username: cleanUser, password });
@@ -172,7 +168,7 @@ export async function loginAdmin(
     // 5. Якщо сервер повернув 500 / "A server error has occurred" або недоступний:
     // Безпечний автоматичний клієнтський фолбек за правильними редакційними реквізитами!
     if (isCorrectCredentials) {
-      const activeUser = cleanUser || 'theimpart_editor';
+      const activeUser = cleanUser || 'admin_theimpart';
       const token = generateClientAdminToken(activeUser);
       setAuthToken(token, remember);
       setAdminUser(activeUser, remember);
@@ -187,7 +183,7 @@ export async function loginAdmin(
   } catch (err: any) {
     // При будь-якому збої мережі: якщо реквізити вірні — пускаємо адміністратора
     if (isCorrectCredentials) {
-      const activeUser = cleanUser || 'theimpart_editor';
+      const activeUser = cleanUser || 'admin_theimpart';
       const token = generateClientAdminToken(activeUser);
       setAuthToken(token, remember);
       setAdminUser(activeUser, remember);

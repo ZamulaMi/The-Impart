@@ -226,7 +226,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
               Поточний обліковий запис
             </div>
             <div className="text-sm sm:text-base font-medium text-black flex items-center gap-2 mt-0.5">
-              <span>{accountInfo?.username || 'theimpart_editor'}</span>
+              <span>{accountInfo?.username || 'admin_theimpart'}</span>
               {accountInfo?.isCustom ? (
                 <span className="inline-flex items-center gap-1 text-[11px] font-sans px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-medium">
                   <Check className="w-3 h-3" />
@@ -324,7 +324,7 @@ export const AdminSecurityManager: React.FC<AdminSecurityManagerProps> = ({
               type="text"
               value={newUsername}
               onChange={(e) => setNewUsername(e.target.value)}
-              placeholder="theimpart_editor"
+              placeholder="admin_theimpart"
               required
               disabled={isSubmitting}
               className="w-full pl-10 pr-4 py-2.5 bg-neutral-50 hover:bg-neutral-100/50 focus:bg-white border border-neutral-300 focus:border-black rounded-lg text-sm text-black placeholder-neutral-400 transition-all outline-none"

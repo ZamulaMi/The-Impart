@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, KeyRound, Loader2 } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, AlertCircle, Loader2 } from 'lucide-react';
 import { loginAdmin } from '../services/auth';
 import { formatErrorMessage } from '../utils/errors';
 
@@ -11,9 +11,9 @@ interface AdminLoginProps {
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackToSite }) => {
   const [username, setUsername] = useState(() => {
     try {
-      return localStorage.getItem('impart_admin_username') || 'theimpart_editor';
+      return localStorage.getItem('impart_admin_username') || '';
     } catch {
-      return 'theimpart_editor';
+      return '';
     }
   });
   const [password, setPassword] = useState('');
@@ -48,12 +48,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
         setIsLocked(true);
       }
     }
-  };
-
-  const handleFillCredentials = () => {
-    setUsername('theimpart_editor');
-    setPassword('Impart#2026!Sec_k9XvL4Q');
-    setErrorMessage(null);
   };
 
   return (
@@ -127,7 +121,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={isLoading || isLocked}
-                  placeholder="theimpart_editor"
+                  placeholder="admin_theimpart"
                   required
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 bg-neutral-900 border border-neutral-800 focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400 rounded-lg text-sm text-white placeholder-neutral-600 transition-all outline-none disabled:opacity-50"
@@ -174,16 +168,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
                 />
                 <span>Запам'ятати на цьому пристрої</span>
               </label>
-
-              <button
-                type="button"
-                onClick={handleFillCredentials}
-                className="text-neutral-400 hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
-                title="Підставити стандартні облікові дані"
-              >
-                <KeyRound className="w-3 h-3 text-neutral-500" />
-                <span>Заповнити дані</span>
-              </button>
             </div>
 
             <button
@@ -201,27 +185,6 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
               )}
             </button>
           </form>
-
-          {/* Інформаційна плашка з обліковими даними */}
-          <div className="mt-8 pt-6 border-t border-neutral-900 text-center">
-            <div className="bg-neutral-900/70 border border-neutral-800/80 rounded-lg p-3 text-[11px] text-neutral-400 font-mono text-left">
-              <div className="flex items-center justify-between text-neutral-500 text-[10px] uppercase tracking-wider mb-1">
-                <span>Стандартні облікові дані:</span>
-                <span className="text-emerald-500 font-semibold">За замовчуванням</span>
-              </div>
-              <div className="flex justify-between py-0.5">
-                <span className="text-neutral-500">Логін:</span>
-                <span className="text-white font-medium select-all">theimpart_editor</span>
-              </div>
-              <div className="flex justify-between py-0.5">
-                <span className="text-neutral-500">Пароль:</span>
-                <span className="text-neutral-200 font-medium select-all">Impart#2026!Sec_k9XvL4Q</span>
-              </div>
-              <div className="text-[10px] text-neutral-500 font-sans mt-2 pt-2 border-t border-neutral-800/60">
-                * Якщо ви змінили логін та пароль у панелі «Безпека та пароль», використовуйте ваші персональні дані.
-              </div>
-            </div>
-          </div>
         </div>
       </main>
 

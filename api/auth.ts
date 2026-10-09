@@ -36,7 +36,7 @@ let isCredentialsLoaded = false;
 function getJwtSecret(): string {
   return (
     process.env.ADMIN_JWT_SECRET ||
-    'impart_editorial_secret_salt_9f83ac127e90c74f56b2d18e'
+    '8f4a1c9e3b7d2f5a0e6c8b1d4f9a2e5c7b0d3f6a8e1c4b7d0f3a6e9b2c5d8f1a'
   );
 }
 
@@ -55,8 +55,8 @@ function cleanEnvVal(val: string | undefined, defaultVal: string): string {
 
 // Отримання стандартних облікових даних
 export function getAdminCredentials() {
-  const configuredUser = cleanEnvVal(process.env.ADMIN_USERNAME, 'theimpart_editor');
-  const configuredPass = cleanEnvVal(process.env.ADMIN_PASSWORD, 'Impart#2026!Sec_k9XvL4Q');
+  const configuredUser = cleanEnvVal(process.env.ADMIN_USERNAME, 'admin_theimpart');
+  const configuredPass = cleanEnvVal(process.env.ADMIN_PASSWORD, 'K9#vP2$xL8!mR4&qT7');
   return {
     username: configuredUser,
     password: configuredPass,
@@ -602,16 +602,12 @@ export default async function authHandler(req: any, res: any) {
 
     // Перевірка 1: відповідність стандартним редакційним даним (виконується миттєво в пам'яті без звернення до БД)
     const isEditorialDefault =
-      (safeCompare(inputUser, 'theimpart_editor') || safeCompare(inputUser, 'admin')) &&
-      safeCompare(inputPass, 'Impart#2026!Sec_k9XvL4Q');
-
-    const isAlternativeDefault =
       (safeCompare(inputUser, 'admin_theimpart') || safeCompare(inputUser, 'admin')) &&
       safeCompare(inputPass, 'K9#vP2$xL8!mR4&qT7');
 
-    if (isEditorialDefault || isAlternativeDefault) {
+    if (isEditorialDefault) {
       resetAttempts(ip);
-      const activeUser = inputUser || 'theimpart_editor';
+      const activeUser = inputUser || 'admin_theimpart';
       const token = generateAdminToken(activeUser);
       return res.status(200).json({
         success: true,
