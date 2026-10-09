@@ -1,6 +1,9 @@
 import { verifyAdminToken, extractToken } from './auth';
+import { initResponseHelpers, parseRequestBody } from './helpers';
 
 export default async function handler(req: any, res: any) {
+  initResponseHelpers(res);
+
   // Налаштування CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -21,27 +24,7 @@ export default async function handler(req: any, res: any) {
       return res.status(401).json({ error: 'Потрібна авторизація адміністратора для завантаження медіа' });
     }
 
-    let body = req.body;
-    if (typeof body === 'string') {
-      try {
-        body = JSON.parse(body);
-      } catch {
-        return res.status(400).json({ error: 'Недійсний JSON' });
-      }
-    }
-
-    if (!body || typeof body !== 'object') {
-      if (typeof req.on === 'function' && !req.readableEnded && req.readable) {
-        body = await new Promise((resolve) => {
-          let data = '';
-          req.on('data', (chunk: any) => { data += chunk; });
-          req.on('end', () => {
-            try { resolve(data ? JSON.parse(data) : {}); } catch { resolve({}); }
-          });
-          req.on('error', () => resolve({}));
-        });
-      }
-    }
+    let body = await parseRequestBody(req);
 
     const { data } = body || {};
     if (!data || typeof data !== 'string') {

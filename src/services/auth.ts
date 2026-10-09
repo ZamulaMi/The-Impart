@@ -86,13 +86,27 @@ export async function loginAdmin(
       body: payload,
     }).catch(() => null);
 
-    // Якщо 404 або помилка роутингу, пробуємо /api/auth/login
-    if (!res || res.status === 404) {
-      res = await fetch('/api/auth/login', {
+    // Якщо 404 або статус не ok (наприклад, специфіка роутингу Vercel), пробуємо альтернативні шляхи
+    if (!res || !res.ok) {
+      const alt1 = await fetch('/api/auth?action=login', {
         method: 'POST',
         headers,
         body: payload,
       }).catch(() => null);
+      if (alt1 && alt1.ok) {
+        res = alt1;
+      } else {
+        const alt2 = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers,
+          body: payload,
+        }).catch(() => null);
+        if (alt2 && alt2.ok) {
+          res = alt2;
+        } else if (alt1) {
+          res = alt1;
+        }
+      }
     }
 
     if (!res) {
@@ -102,7 +116,17 @@ export async function loginAdmin(
       };
     }
 
-    const data = await res.json().catch(() => ({}));
+    let data: any = {};
+    const text = await res.text().catch(() => '');
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (text && text.toLowerCase().includes('server error')) {
+        data = { error: 'Помилка з\'єднання з сервером. Спробуйте ще раз або оновіть сторінку.' };
+      } else {
+        data = { error: text || 'Помилка відповіді сервера' };
+      }
+    }
 
     if (res.ok && data.success && data.token) {
       setAuthToken(data.token, remember);

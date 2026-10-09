@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { getNeonSql } from './db';
+import { initResponseHelpers, parseRequestBody } from './helpers';
 
 interface LoginAttempt {
   count: number;
@@ -422,26 +423,28 @@ async function parseBody(req: any): Promise<any> {
 
 // Ендпоінт входу / перевірки (сумісний як з Express, так і з Vercel Serverless)
 export default async function authHandler(req: any, res: any) {
-  // Налаштування CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
-  res.setHeader('Content-Type', 'application/json');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
+  // Ініціалізація допоміжних методів res.status() та res.json() для чистого середовища Vercel
+  initResponseHelpers(res);
 
   try {
+    // Налаштування CORS
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
-  const url = req.url || '';
-  const ip = getClientIp(req);
-  const queryAction = req.query?.action || '';
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
 
-  // Отримуємо тіло запиту
-  const body = await parseBody(req);
-  const bodyAction = body?.action || '';
+    const url = req.url || '';
+    const ip = getClientIp(req);
+    const queryAction = req.query?.action || '';
+
+    // Отримуємо тіло запиту за допомогою надійного парсера
+    const body = await parseRequestBody(req);
+    const bodyAction = body?.action || '';
 
   const isLogout =
     url.includes('/logout') || queryAction === 'logout' || bodyAction === 'logout';
@@ -597,16 +600,7 @@ export default async function authHandler(req: any, res: any) {
     const inputUser = String(body?.username || '').trim();
     const inputPass = String(body?.password || '').trim();
 
-    const effective = await getEffectiveCredentials();
-
-    // Перевірка 1: відповідність діючим обліковим даним (з бази даних або змінних середовища)
-    const isEffectiveUser =
-      safeCompare(inputUser, effective.username) || safeCompare(inputUser, 'admin');
-    const isEffectivePass = effective.verifyPassword(inputPass);
-    const isEffectiveMatch = isEffectiveUser && isEffectivePass;
-
-    // Перевірка 2: відповідність стандартним редакційним даним за замовчуванням
-    // (гарантує безперебійний вхід при розгортанні на Vercel як з .env, так і без)
+    // Перевірка 1: відповідність стандартним редакційним даним (виконується миттєво в пам'яті без звернення до БД)
     const isEditorialDefault =
       (safeCompare(inputUser, 'theimpart_editor') || safeCompare(inputUser, 'admin')) &&
       safeCompare(inputPass, 'Impart#2026!Sec_k9XvL4Q');
@@ -615,11 +609,9 @@ export default async function authHandler(req: any, res: any) {
       (safeCompare(inputUser, 'admin_theimpart') || safeCompare(inputUser, 'admin')) &&
       safeCompare(inputPass, 'K9#vP2$xL8!mR4&qT7');
 
-    const isLoginValid = isEffectiveMatch || isEditorialDefault || isAlternativeDefault;
-
-    if (isLoginValid) {
+    if (isEditorialDefault || isAlternativeDefault) {
       resetAttempts(ip);
-      const activeUser = isEffectiveMatch ? effective.username : inputUser || 'theimpart_editor';
+      const activeUser = inputUser || 'theimpart_editor';
       const token = generateAdminToken(activeUser);
       return res.status(200).json({
         success: true,
@@ -627,9 +619,40 @@ export default async function authHandler(req: any, res: any) {
         user: {
           username: activeUser,
           role: 'admin',
-          isCustom: effective.isCustom,
+          isCustom: false,
         },
       });
+    }
+
+    // Перевірка 2: перевірка кастомних даних (з тайм-аутом на випадок недоступності БД)
+    let effective: any = null;
+    try {
+      effective = await Promise.race([
+        getEffectiveCredentials(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('db timeout')), 2000)),
+      ]);
+    } catch {
+      effective = null;
+    }
+
+    if (effective) {
+      const isEffectiveUser =
+        safeCompare(inputUser, effective.username) || safeCompare(inputUser, 'admin');
+      const isEffectivePass = effective.verifyPassword(inputPass);
+      if (isEffectiveUser && isEffectivePass) {
+        resetAttempts(ip);
+        const activeUser = effective.username;
+        const token = generateAdminToken(activeUser);
+        return res.status(200).json({
+          success: true,
+          token,
+          user: {
+            username: activeUser,
+            role: 'admin',
+            isCustom: effective.isCustom,
+          },
+        });
+      }
     }
 
     // Реєструємо невдалу спробу
@@ -651,14 +674,17 @@ export default async function authHandler(req: any, res: any) {
     });
   }
 
-    return res.status(404).json({ error: 'Endpoint not found' });
+  return res.status(404).json({ error: 'Endpoint not found' });
   } catch (err: any) {
     console.error('Unhandled authHandler error:', err);
-    if (!res.headersSent) {
-      return res.status(500).json({
-        success: false,
-        error: typeof err?.message === 'string' ? err.message : 'Помилка сервера автентифікації',
-      });
-    }
+    try {
+      initResponseHelpers(res);
+      if (!res.headersSent) {
+        return res.status(500).json({
+          success: false,
+          error: typeof err?.message === 'string' ? err.message : 'Помилка сервера автентифікації',
+        });
+      }
+    } catch {}
   }
 }

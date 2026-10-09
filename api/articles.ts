@@ -3,6 +3,7 @@ import path from 'path';
 import { getNeonSql, cleanConnectionString } from './db';
 import { verifyAdminToken, extractToken } from './auth';
 import { SEED_ARTICLES } from '../src/data/seedArticles';
+import { initResponseHelpers, parseRequestBody } from './helpers';
 
 export { getNeonSql, cleanConnectionString };
 
@@ -368,6 +369,8 @@ export async function deleteArticle(id: string): Promise<boolean> {
 }
 
 export default async function handler(req: any, res: any) {
+  initResponseHelpers(res);
+
   // Налаштування CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -389,7 +392,7 @@ export default async function handler(req: any, res: any) {
         return res.status(401).json({ error: 'Потрібна авторизація адміністратора для збереження статей' });
       }
 
-      let body = req.body;
+      let body = await parseRequestBody(req);
 
       if (typeof body === 'string') {
         try {

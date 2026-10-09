@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { getNeonSql } from './db';
 import { verifyAdminToken, extractToken } from './auth';
+import { initResponseHelpers, parseRequestBody } from './helpers';
 
 export interface SocialLinksSet {
   telegram?: string;
@@ -200,6 +201,8 @@ export async function saveSocialLinks(links: any): Promise<SiteSocialLinks> {
 }
 
 export default async function handler(req: any, res: any) {
+  initResponseHelpers(res);
+
   res.setHeader('Content-Type', 'application/json');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
 
@@ -219,7 +222,7 @@ export default async function handler(req: any, res: any) {
         return res.status(401).json({ error: 'Потрібна авторизація адміністратора для зміни налаштувань' });
       }
 
-      let body = req.body;
+      let body = await parseRequestBody(req);
 
       if (typeof body === 'string') {
         try {
