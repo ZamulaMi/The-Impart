@@ -4,17 +4,8 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/auth/:action",
-      "destination": "/api/auth?action=:action"
-    },
-    {
       "source": "/((?!api/|uploads/).*)",
       "destination": "/index.html"
     }
-  ],
-  "functions": {
-    "api/*.ts": {
-      "includeFiles": "data/**"
-    }
-  }
+  ]
 }

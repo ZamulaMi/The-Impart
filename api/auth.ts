@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { getNeonSql } from './db';
-import { initResponseHelpers, parseRequestBody } from './helpers';
+import { getNeonSql } from '../src/server/db';
+import { initResponseHelpers, parseRequestBody } from '../src/server/helpers';
 
 interface LoginAttempt {
   count: number;

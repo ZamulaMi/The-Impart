@@ -56,4 +56,3 @@ export function getNeonSql(): any | null {
     return null;
   }
 }
-

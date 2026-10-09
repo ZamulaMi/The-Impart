@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { getNeonSql } from './db';
+import { getNeonSql } from '../src/server/db';
 import { verifyAdminToken, extractToken } from './auth';
-import { initResponseHelpers, parseRequestBody } from './helpers';
+import { initResponseHelpers, parseRequestBody } from '../src/server/helpers';
 
 export interface SocialLinksSet {
   telegram?: string;

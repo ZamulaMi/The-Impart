@@ -1,5 +1,5 @@
 import { verifyAdminToken, extractToken } from './auth';
-import { initResponseHelpers, parseRequestBody } from './helpers';
+import { initResponseHelpers, parseRequestBody } from '../src/server/helpers';
 
 export default async function handler(req: any, res: any) {
   initResponseHelpers(res);

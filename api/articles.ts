@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { getNeonSql, cleanConnectionString } from './db';
+import { getNeonSql, cleanConnectionString } from '../src/server/db';
 import { verifyAdminToken, extractToken } from './auth';
 import { SEED_ARTICLES } from '../src/data/seedArticles';
-import { initResponseHelpers, parseRequestBody } from './helpers';
+import { initResponseHelpers, parseRequestBody } from '../src/server/helpers';
 
 export { getNeonSql, cleanConnectionString };
 
