@@ -121,7 +121,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess, onBackTo
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={isLoading || isLocked}
-                  placeholder="admin_theimpart"
+                  placeholder="login"
                   required
                   autoComplete="username"
                   className="w-full pl-10 pr-4 py-2.5 bg-neutral-900 border border-neutral-800 focus:border-neutral-400 focus:ring-1 focus:ring-neutral-400 rounded-lg text-sm text-white placeholder-neutral-600 transition-all outline-none disabled:opacity-50"
