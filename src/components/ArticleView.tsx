@@ -45,7 +45,7 @@ export const ArticleView: React.FC<ArticleViewProps> = ({
 
   // Копіювання унікального посилання на статтю
   const handleCopyLink = () => {
-    const url = `${window.location.origin}${window.location.pathname}?article=${article.id}`;
+    const url = `${window.location.origin}/article/${article.id}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url).then(() => {
         setCopiedLink(true);

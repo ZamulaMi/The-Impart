@@ -1776,7 +1776,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            const url = `${window.location.origin}${window.location.pathname}?article=${art.id}`;
+                            const url = `${window.location.origin}/article/${art.id}`;
                             navigator.clipboard.writeText(url).then(() => {
                               showNotification('Пряме посилання на статтю скопійовано');
                             });

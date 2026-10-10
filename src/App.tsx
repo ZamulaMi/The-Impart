@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react';
-import { Search, X, Menu, ChevronRight, Lock } from 'lucide-react';
+import { Search, X, Menu, ChevronRight } from 'lucide-react';
 import { Article, SiteLanguage, SiteSocialLinks, TaxonomiesData } from './types';
 import { AdminPanel } from './components/AdminPanel';
 import { AdminLogin } from './components/AdminLogin';
@@ -219,16 +219,72 @@ function ArticleCard({ article, siteLang, aspectRatio, isHero = false, onSelect 
   );
 }
 
+function parseRouteFromUrl(): {
+  route: 'main' | 'admin';
+  section: HeaderSection | null;
+  articleId: string | null;
+  searchQuery: string | null;
+  page: number;
+} {
+  if (typeof window === 'undefined') {
+    return { route: 'main', section: null, articleId: null, searchQuery: null, page: 1 };
+  }
+
+  const rawPath = window.location.pathname.replace(/\/+$/, '') || '/';
+  const path = rawPath.toLowerCase();
+  const search = window.location.search;
+  const hash = window.location.hash;
+  const params = new URLSearchParams(search);
+
+  // 1. Адмінка: /admin або #admin
+  if (path === '/admin' || path.startsWith('/admin/') || hash === '#admin') {
+    return { route: 'admin', section: null, articleId: null, searchQuery: null, page: 1 };
+  }
+
+  // 2. Пряме посилання на статтю: /article/:id або зворотна сумісність: ?article=:id або #article-:id
+  let articleId: string | null = null;
+  const articleMatch = rawPath.match(/^\/article\/(.+)$/i);
+  if (articleMatch) {
+    articleId = decodeURIComponent(articleMatch[1]);
+  } else if (params.get('article')) {
+    articleId = params.get('article');
+  } else if (hash.startsWith('#article-')) {
+    articleId = hash.replace('#article-', '');
+  }
+
+  if (articleId) {
+    return { route: 'main', section: null, articleId, searchQuery: null, page: 1 };
+  }
+
+  // 3. Розділи: /news, /articles, /reviews або зворотна сумісність ?section=...
+  let section: HeaderSection | null = null;
+  if (path === '/news' || params.get('section') === 'news') {
+    section = 'news';
+  } else if (path === '/articles' || params.get('section') === 'articles') {
+    section = 'articles';
+  } else if (path === '/reviews' || params.get('section') === 'reviews') {
+    section = 'reviews';
+  }
+
+  // 4. Пошук: /search/:query, /search?q=... або ?search=... або ?q=...
+  let searchQuery: string | null = null;
+  const searchMatch = rawPath.match(/^\/search\/(.+)$/i);
+  if (searchMatch) {
+    searchQuery = decodeURIComponent(searchMatch[1]);
+  } else if (path === '/search' || params.has('search') || params.has('q')) {
+    const q = params.get('q') || params.get('search');
+    if (q && q.trim()) searchQuery = q.trim();
+  }
+
+  // 5. Пагінація: ?page=...
+  const pgParam = parseInt(params.get('page') || '1', 10);
+  const page = isNaN(pgParam) || pgParam < 1 ? 1 : pgParam;
+
+  return { route: 'main', section, articleId: null, searchQuery, page };
+}
+
 export default function App() {
-  const [currentRoute, setCurrentRoute] = useState<'main' | 'admin'>(() => {
-    if (typeof window === 'undefined') return 'main';
-    const path = window.location.pathname;
-    const hash = window.location.hash;
-    const search = window.location.search;
-    return path.includes('/admin') || hash === '#admin' || search.includes('admin')
-      ? 'admin'
-      : 'main';
-  });
+  const [currentRoute, setCurrentRoute] = useState<'main' | 'admin'>(() => parseRouteFromUrl().route);
 
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     return Boolean(getAuthToken());
@@ -262,16 +318,7 @@ export default function App() {
     return DEFAULT_SOCIAL_LINKS;
   });
 
-  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const art = params.get('article');
-    if (art) return art;
-    if (window.location.hash.startsWith('#article-')) {
-      return window.location.hash.replace('#article-', '');
-    }
-    return null;
-  });
+  const [selectedArticleId, setSelectedArticleId] = useState<string | null>(() => parseRouteFromUrl().articleId);
 
   const [taxonomies, setTaxonomies] = useState<TaxonomiesData>(() => getStoredTaxonomies());
 
@@ -295,21 +342,10 @@ export default function App() {
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Активний розділ у шапці: 'news' | 'articles' | 'reviews' | null (null = головна стрічка)
-  const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const sec = params.get('section') as HeaderSection | null;
-    if (sec && ['news', 'articles', 'reviews'].includes(sec)) return sec;
-    return null;
-  });
+  const [activeCategorySection, setActiveCategorySection] = useState<HeaderSection | null>(() => parseRouteFromUrl().section);
 
   // Поточна сторінка для пагінації у розділах рубрик (по 10 статей на сторінку)
-  const [categoryPage, setCategoryPage] = useState<number>(() => {
-    if (typeof window === 'undefined') return 1;
-    const params = new URLSearchParams(window.location.search);
-    const pg = parseInt(params.get('page') || '1', 10);
-    return isNaN(pg) || pg < 1 ? 1 : pg;
-  });
+  const [categoryPage, setCategoryPage] = useState<number>(() => parseRouteFromUrl().page);
 
   // Стан пошуку та мобільного меню
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
@@ -334,22 +370,15 @@ export default function App() {
     query: string;
     articleIds: string[];
   } | null>(() => {
-    if (typeof window === 'undefined') return null;
-    const params = new URLSearchParams(window.location.search);
-    const q = params.get('search');
-    if (q && q.trim()) {
-      return { query: q.trim(), articleIds: [] };
+    const q = parseRouteFromUrl().searchQuery;
+    if (q) {
+      return { query: q, articleIds: [] };
     }
     return null;
   });
 
   // Поточна сторінка для пагінації у результатах пошуку (по 10 статей на сторінку)
-  const [searchPage, setSearchPage] = useState<number>(() => {
-    if (typeof window === 'undefined') return 1;
-    const params = new URLSearchParams(window.location.search);
-    const pg = parseInt(params.get('page') || '1', 10);
-    return isNaN(pg) || pg < 1 ? 1 : pg;
-  });
+  const [searchPage, setSearchPage] = useState<number>(() => parseRouteFromUrl().page);
 
 
   // Кількість статей у стрічці головної сторінки (спочатку 10, по +10 при "показати більше")
@@ -535,37 +564,24 @@ export default function App() {
   // Синхронізація з навігацією браузера (URL, popstate, hashchange)
   useEffect(() => {
     const handleLocationChange = () => {
-      const path = window.location.pathname;
-      const hash = window.location.hash;
-      const search = window.location.search;
-      if (path.includes('/admin') || hash === '#admin' || search.includes('admin')) {
+      const parsed = parseRouteFromUrl();
+      if (parsed.route === 'admin') {
         setCurrentRoute('admin');
         setSelectedArticleId(null);
         return;
       }
 
       setCurrentRoute('main');
-      const params = new URLSearchParams(search);
-      const artParam = params.get('article') || (hash.startsWith('#article-') ? hash.replace('#article-', '') : null);
-      const secParam = params.get('section') as HeaderSection | null;
-      const srchParam = params.get('search');
-      const pgParam = parseInt(params.get('page') || '1', 10);
-      const safePg = isNaN(pgParam) || pgParam < 1 ? 1 : pgParam;
+      setSelectedArticleId(parsed.articleId);
 
-      if (artParam) {
-        setSelectedArticleId(artParam);
-      } else {
-        setSelectedArticleId(null);
-      }
-
-      if (srchParam && srchParam.trim()) {
-        setActiveSearchFilter({ query: srchParam.trim(), articleIds: [] });
-        setSearchPage(safePg);
+      if (parsed.searchQuery) {
+        setActiveSearchFilter({ query: parsed.searchQuery, articleIds: [] });
+        setSearchPage(parsed.page);
         setActiveCategorySection(null);
-      } else if (secParam && ['news', 'articles', 'reviews'].includes(secParam)) {
+      } else if (parsed.section) {
         setActiveSearchFilter(null);
-        setActiveCategorySection(secParam);
-        setCategoryPage(safePg);
+        setActiveCategorySection(parsed.section);
+        setCategoryPage(parsed.page);
       } else {
         setActiveSearchFilter(null);
         setActiveCategorySection(null);
@@ -588,11 +604,11 @@ export default function App() {
     } else {
       setCurrentRoute('main');
       if (articleId) {
-        window.history.pushState(null, '', `?article=${encodeURIComponent(articleId)}`);
+        window.history.pushState(null, '', `/article/${encodeURIComponent(articleId)}`);
         setSelectedArticleId(articleId);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        window.history.pushState(null, '', window.location.pathname);
+        window.history.pushState(null, '', '/');
         setSelectedArticleId(null);
         setActiveCategorySection(null);
       }
@@ -605,9 +621,9 @@ export default function App() {
     setSelectedArticleId(null);
     setActiveSearchFilter(null);
     if (sec) {
-      window.history.pushState(null, '', `?section=${sec}`);
+      window.history.pushState(null, '', `/${sec}`);
     } else {
-      window.history.pushState(null, '', window.location.pathname);
+      window.history.pushState(null, '', '/');
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -618,7 +634,7 @@ export default function App() {
       window.history.pushState(
         null,
         '',
-        `?section=${activeCategorySection}${pageNumber > 1 ? `&page=${pageNumber}` : ''}`
+        `/${activeCategorySection}${pageNumber > 1 ? `?page=${pageNumber}` : ''}`
       );
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -630,7 +646,7 @@ export default function App() {
       window.history.pushState(
         null,
         '',
-        `?search=${encodeURIComponent(activeSearchFilter.query)}${pageNumber > 1 ? `&page=${pageNumber}` : ''}`
+        `/search/${encodeURIComponent(activeSearchFilter.query)}${pageNumber > 1 ? `?page=${pageNumber}` : ''}`
       );
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -644,20 +660,20 @@ export default function App() {
       query,
       articleIds: results.map((r) => r.id),
     });
-    window.history.pushState(null, '', `?search=${encodeURIComponent(query)}`);
+    window.history.pushState(null, '', `/search/${encodeURIComponent(query)}`);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleResetSearch = () => {
     setActiveSearchFilter(null);
     setSearchPage(1);
-    window.history.pushState(null, '', window.location.pathname);
+    window.history.pushState(null, '', '/');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSelectArticle = (id: string | null) => {
     if (id) {
-      window.history.pushState(null, '', `?article=${encodeURIComponent(id)}`);
+      window.history.pushState(null, '', `/article/${encodeURIComponent(id)}`);
       setSelectedArticleId(id);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } else {
@@ -666,16 +682,16 @@ export default function App() {
         window.history.pushState(
           null,
           '',
-          `?search=${encodeURIComponent(activeSearchFilter.query)}${searchPage > 1 ? `&page=${searchPage}` : ''}`
+          `/search/${encodeURIComponent(activeSearchFilter.query)}${searchPage > 1 ? `?page=${searchPage}` : ''}`
         );
       } else if (activeCategorySection) {
         window.history.pushState(
           null,
           '',
-          `?section=${activeCategorySection}${categoryPage > 1 ? `&page=${categoryPage}` : ''}`
+          `/${activeCategorySection}${categoryPage > 1 ? `?page=${categoryPage}` : ''}`
         );
       } else {
-        window.history.pushState(null, '', window.location.pathname);
+        window.history.pushState(null, '', '/');
       }
       setSelectedArticleId(null);
     }
@@ -1728,16 +1744,6 @@ export default function App() {
 
             <div className="flex items-center gap-3 text-xs text-neutral-400 font-sans">
               <span>© {new Date().getFullYear()} The Impart. All rights reserved.</span>
-              <span className="text-neutral-300">•</span>
-              <button
-                type="button"
-                onClick={() => navigateTo('admin')}
-                className="hover:text-black transition-colors cursor-pointer flex items-center gap-1 text-[11px]"
-                title="Редакційний вхід"
-              >
-                <Lock className="w-3 h-3 text-neutral-400" />
-                <span>Редакція</span>
-              </button>
             </div>
           </div>
         </div>
