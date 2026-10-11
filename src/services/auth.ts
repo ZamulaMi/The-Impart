@@ -306,6 +306,7 @@ export async function changeAdminCredentials(
   newPassword: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
+    const token = getAuthToken();
     const headers = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -313,6 +314,7 @@ export async function changeAdminCredentials(
     };
     const body = JSON.stringify({
       action: 'change_credentials',
+      token,
       currentPassword,
       newUsername,
       newPassword,
@@ -358,6 +360,7 @@ export async function resetAdminCredentials(
   currentPassword: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
   try {
+    const token = getAuthToken();
     const headers = {
       'Content-Type': 'application/json',
       Accept: 'application/json',
@@ -365,6 +368,7 @@ export async function resetAdminCredentials(
     };
     const body = JSON.stringify({
       action: 'reset_credentials',
+      token,
       currentPassword,
     });
 
