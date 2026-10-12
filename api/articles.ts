@@ -1,9 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { getNeonSql, cleanConnectionString } from '../src/server/db';
-import { verifyAdminToken, extractToken } from './auth';
-import { SEED_ARTICLES } from '../src/data/seedArticles';
-import { initResponseHelpers, parseRequestBody } from '../src/server/helpers';
+import { getNeonSql, cleanConnectionString, safeExecuteSql } from './_db.ts';
+import { verifyAdminToken, extractToken } from './_auth_utils.ts';
+import { SEED_ARTICLES } from '../src/data/seedArticles.ts';
+import { initResponseHelpers, parseRequestBody } from './_helpers.ts';
 
 export { getNeonSql, cleanConnectionString };
 
@@ -33,26 +33,16 @@ export interface Article {
   publishedEn?: boolean;
 }
 
-// Початкові статті за замовчуванням (усі 14 актуальних матеріалів редакції)
+// Початкові статті за замовчуванням
 export const DEFAULT_ARTICLES: Article[] = SEED_ARTICLES;
 
 // Локальне збереження на диску сервера
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 const ARTICLES_FILE = path.join(DATA_DIR, 'articles.json');
-
-const TMP_DATA_DIR = '/tmp';
-const ARTICLES_TMP_FILE = path.join(TMP_DATA_DIR, 'impart_articles.json');
-
-function ensureDataDir(): void {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-  } catch {}
-}
+const ARTICLES_TMP_FILE = '/tmp/impart_articles.json';
 
 function readArticlesFromFile(): Article[] | null {
-  const paths = [ARTICLES_FILE, ARTICLES_TMP_FILE];
+  const paths = [ARTICLES_TMP_FILE, ARTICLES_FILE];
   for (const p of paths) {
     try {
       if (fs.existsSync(p)) {
@@ -71,13 +61,19 @@ function readArticlesFromFile(): Article[] | null {
 
 function writeArticlesToFile(articles: Article[]): void {
   const payload = JSON.stringify(articles, null, 2);
-  const paths = [ARTICLES_TMP_FILE, ARTICLES_FILE];
-  for (const p of paths) {
-    try {
-      if (p === ARTICLES_FILE) ensureDataDir();
-      fs.writeFileSync(p, payload, 'utf-8');
-    } catch {}
-  }
+
+  // Vercel Serverless: безпечний запис у /tmp
+  try {
+    fs.writeFileSync(ARTICLES_TMP_FILE, payload, 'utf-8');
+  } catch {}
+
+  // Express сервер: запис у data/articles.json
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    fs.writeFileSync(ARTICLES_FILE, payload, 'utf-8');
+  } catch {}
 }
 
 // Ініціалізуємо пам'ять з диска або початкових статей
@@ -93,99 +89,93 @@ export async function initDb() {
   if (isTableInitialized) return;
 
   try {
-    const sql = getNeonSql();
-    if (!sql) return;
-    await sql`
-      CREATE TABLE IF NOT EXISTS articles (
-        id VARCHAR(255) PRIMARY KEY,
-        title TEXT NOT NULL,
-        excerpt TEXT,
-        content TEXT NOT NULL,
-        category VARCHAR(100) DEFAULT 'Загальне',
-        author VARCHAR(255) DEFAULT 'Редакція The Impart',
-        cover_image TEXT,
-        date VARCHAR(100),
-        read_time VARCHAR(100),
-        published BOOLEAN DEFAULT true,
-        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
+    await safeExecuteSql(async (sql) => {
+      await sql`
+        CREATE TABLE IF NOT EXISTS articles (
+          id VARCHAR(255) PRIMARY KEY,
+          title TEXT NOT NULL,
+          excerpt TEXT,
+          content TEXT NOT NULL,
+          category VARCHAR(100) DEFAULT 'Загальне',
+          author VARCHAR(255) DEFAULT 'Редакція The Impart',
+          cover_image TEXT,
+          date VARCHAR(100),
+          read_time VARCHAR(100),
+          published BOOLEAN DEFAULT true,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+      `;
 
-    // Переконуємось, що існують колонки для англійської версії статті
-    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS title_en TEXT;`;
-    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS excerpt_en TEXT;`;
-    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS content_en TEXT;`;
-    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS category_en VARCHAR(100);`;
-    await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS published_en BOOLEAN DEFAULT false;`;
+      await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS title_en TEXT;`;
+      await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS excerpt_en TEXT;`;
+      await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS content_en TEXT;`;
+      await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS category_en VARCHAR(100);`;
+      await sql`ALTER TABLE articles ADD COLUMN IF NOT EXISTS published_en BOOLEAN DEFAULT false;`;
 
-    // Перевіряємо наявність записів
-    const rows = await sql`SELECT count(*) as count FROM articles;`;
-    if (parseInt(rows[0]?.count || '0', 10) === 0) {
-      const toSeed = inMemoryArticles.length > 0 ? inMemoryArticles : DEFAULT_ARTICLES;
-      for (const a of toSeed) {
-        await sql`
-          INSERT INTO articles (
-            id, title, excerpt, content, category, author, cover_image, date, read_time, published,
-            title_en, excerpt_en, content_en, category_en, published_en
-          )
-          VALUES (
-            ${a.id}, 
-            ${a.title}, 
-            ${a.excerpt}, 
-            ${a.content}, 
-            ${a.category}, 
-            ${a.author}, 
-            ${a.coverImage || null}, 
-            ${a.date}, 
-            ${a.readTime || null}, 
-            ${a.published},
-            ${a.titleEn || null},
-            ${a.excerptEn || null},
-            ${a.contentEn || null},
-            ${a.categoryEn || null},
-            ${a.publishedEn ?? false}
-          )
-          ON CONFLICT (id) DO NOTHING;
-        `;
+      const rows = await sql`SELECT count(*) as count FROM articles;`;
+      if (parseInt(rows[0]?.count || '0', 10) === 0) {
+        const toSeed = inMemoryArticles.length > 0 ? inMemoryArticles : DEFAULT_ARTICLES;
+        for (const a of toSeed) {
+          await sql`
+            INSERT INTO articles (
+              id, title, excerpt, content, category, author, cover_image, date, read_time, published,
+              title_en, excerpt_en, content_en, category_en, published_en
+            )
+            VALUES (
+              ${a.id}, 
+              ${a.title}, 
+              ${a.excerpt}, 
+              ${a.content}, 
+              ${a.category}, 
+              ${a.author}, 
+              ${a.coverImage || null}, 
+              ${a.date}, 
+              ${a.readTime || null}, 
+              ${a.published},
+              ${a.titleEn || null},
+              ${a.excerptEn || null},
+              ${a.contentEn || null},
+              ${a.categoryEn || null},
+              ${a.publishedEn ?? false}
+            )
+            ON CONFLICT (id) DO NOTHING;
+          `;
+        }
       }
-    }
+    }, 3000);
 
     isTableInitialized = true;
-    console.log('Postgres table "articles" is ready with multilingual columns.');
   } catch (error) {
-    console.warn('Neon initDb notice (fallback to local server disk active):', error);
+    console.warn('Neon initDb notice (fallback active):', error);
   }
 }
 
 export async function getArticles(): Promise<Article[]> {
   try {
     await initDb();
-    const sql = getNeonSql();
-    if (!sql) {
-      const fromFile = readArticlesFromFile();
-      return fromFile && fromFile.length > 0 ? fromFile : inMemoryArticles;
-    }
-    const rows = await sql`
-      SELECT 
-        id, 
-        title, 
-        excerpt, 
-        content, 
-        category, 
-        author, 
-        cover_image as "coverImage", 
-        date, 
-        read_time as "readTime", 
-        created_at as "createdAt",
-        published,
-        title_en as "titleEn",
-        excerpt_en as "excerptEn",
-        content_en as "contentEn",
-        category_en as "categoryEn",
-        published_en as "publishedEn"
-      FROM articles 
-      ORDER BY created_at DESC;
-    `;
+    const rows = await safeExecuteSql(async (sql) => {
+      return await sql`
+        SELECT 
+          id, 
+          title, 
+          excerpt, 
+          content, 
+          category, 
+          author, 
+          cover_image as "coverImage", 
+          date, 
+          read_time as "readTime", 
+          created_at as "createdAt",
+          published,
+          title_en as "titleEn",
+          excerpt_en as "excerptEn",
+          content_en as "contentEn",
+          category_en as "categoryEn",
+          published_en as "publishedEn"
+        FROM articles 
+        ORDER BY created_at DESC;
+      `;
+    }, 3000);
 
     if (rows && rows.length > 0) {
       const mapped = rows.map((r: any) => ({
@@ -212,10 +202,9 @@ export async function getArticles(): Promise<Article[]> {
       return mapped;
     }
   } catch (error) {
-    console.warn('Neon query error in getArticles, loading from server disk/memory:', error);
+    console.warn('Neon query error in getArticles, loading from disk/memory:', error);
   }
 
-  // Резервне завантаження з файлу на диску
   const fromFile = readArticlesFromFile();
   if (fromFile && fromFile.length > 0) {
     inMemoryArticles = fromFile;
@@ -289,56 +278,54 @@ export async function saveArticle(article: Article): Promise<Article> {
     inMemoryArticles = [fullArticle, ...inMemoryArticles];
   }
 
-  // 2. Миттєво записуємо на диск сервера (100% гарантія збереження на сервері)
+  // 2. Миттєво записуємо у файл
   writeArticlesToFile(inMemoryArticles);
 
-  // 3. Синхронізуємо з Neon PostgreSQL
+  // 3. Синхронізуємо з Neon PostgreSQL з безпечним тайм-аутом
   try {
     await initDb();
-    const sql = getNeonSql();
-    if (sql) {
+    await safeExecuteSql(async (sql) => {
       await sql`
-      INSERT INTO articles (
-        id, title, excerpt, content, category, author, cover_image, date, read_time, published,
-        title_en, excerpt_en, content_en, category_en, published_en
-      )
-      VALUES (
-        ${id}, 
-        ${title}, 
-        ${excerpt}, 
-        ${content}, 
-        ${category}, 
-        ${author}, 
-        ${coverImage || null}, 
-        ${date}, 
-        ${readTime || null}, 
-        ${isPub},
-        ${titleEn || null},
-        ${excerptEn || null},
-        ${contentEn || null},
-        ${categoryEn || null},
-        ${isPubEn}
-      )
-      ON CONFLICT (id) DO UPDATE SET
-        title = EXCLUDED.title,
-        excerpt = EXCLUDED.excerpt,
-        content = EXCLUDED.content,
-        category = EXCLUDED.category,
-        author = EXCLUDED.author,
-        cover_image = EXCLUDED.cover_image,
-        date = EXCLUDED.date,
-        read_time = EXCLUDED.read_time,
-        published = EXCLUDED.published,
-        title_en = EXCLUDED.title_en,
-        excerpt_en = EXCLUDED.excerpt_en,
-        content_en = EXCLUDED.content_en,
-        category_en = EXCLUDED.category_en,
-        published_en = EXCLUDED.published_en;
-    `;
-      console.log(`Article "${title}" (ID: ${id}) successfully synced to Neon.`);
-    }
+        INSERT INTO articles (
+          id, title, excerpt, content, category, author, cover_image, date, read_time, published,
+          title_en, excerpt_en, content_en, category_en, published_en
+        )
+        VALUES (
+          ${id}, 
+          ${title}, 
+          ${excerpt}, 
+          ${content}, 
+          ${category}, 
+          ${author}, 
+          ${coverImage || null}, 
+          ${date}, 
+          ${readTime || null}, 
+          ${isPub},
+          ${titleEn || null},
+          ${excerptEn || null},
+          ${contentEn || null},
+          ${categoryEn || null},
+          ${isPubEn}
+        )
+        ON CONFLICT (id) DO UPDATE SET
+          title = EXCLUDED.title,
+          excerpt = EXCLUDED.excerpt,
+          content = EXCLUDED.content,
+          category = EXCLUDED.category,
+          author = EXCLUDED.author,
+          cover_image = EXCLUDED.cover_image,
+          date = EXCLUDED.date,
+          read_time = EXCLUDED.read_time,
+          published = EXCLUDED.published,
+          title_en = EXCLUDED.title_en,
+          excerpt_en = EXCLUDED.excerpt_en,
+          content_en = EXCLUDED.content_en,
+          category_en = EXCLUDED.category_en,
+          published_en = EXCLUDED.published_en;
+      `;
+    }, 3500);
   } catch (error: any) {
-    console.warn('Neon save notice (article is saved on server disk):', error);
+    console.warn('Neon save notice (article is saved locally):', error);
   }
 
   return fullArticle;
@@ -356,13 +343,11 @@ export async function deleteArticle(id: string): Promise<boolean> {
   // 3. Синхронізуємо видалення з Neon
   try {
     await initDb();
-    const sql = getNeonSql();
-    if (sql) {
+    await safeExecuteSql(async (sql) => {
       await sql`DELETE FROM articles WHERE id = ${targetId};`;
-      console.log(`Article ${targetId} deleted from Neon.`);
-    }
+    }, 2500);
   } catch (error) {
-    console.warn(`Neon delete notice (article removed from server disk):`, error);
+    console.warn('Neon delete notice:', error);
   }
 
   return true;
@@ -371,7 +356,6 @@ export async function deleteArticle(id: string): Promise<boolean> {
 export default async function handler(req: any, res: any) {
   initResponseHelpers(res);
 
-  // Налаштування CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept');
@@ -399,27 +383,6 @@ export default async function handler(req: any, res: any) {
           body = JSON.parse(body);
         } catch (e: any) {
           return res.status(400).json({ error: 'Помилка валідації JSON: ' + e.message });
-        }
-      }
-
-      if (!body || typeof body !== 'object') {
-        if (typeof req.on === 'function' && !req.readableEnded && req.readable) {
-          try {
-            body = await new Promise((resolve) => {
-              let data = '';
-              req.on('data', (chunk: any) => { data += chunk; });
-              req.on('end', () => {
-                try {
-                  resolve(data ? JSON.parse(data) : {});
-                } catch {
-                  resolve({});
-                }
-              });
-              req.on('error', () => resolve({}));
-            });
-          } catch {
-            body = {};
-          }
         }
       }
 
@@ -471,7 +434,6 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error: any) {
     console.error('API /api/articles error:', error);
-    // Якщо збереження відбулося у файл/пам'ять, повертаємо актуальний список
     return res.status(200).json(inMemoryArticles);
   }
 }

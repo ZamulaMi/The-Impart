@@ -4,6 +4,18 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/auth/:path*",
+      "destination": "/api/auth"
+    },
+    {
+      "source": "/api/articles/:path*",
+      "destination": "/api/articles"
+    },
+    {
+      "source": "/api/settings/:path*",
+      "destination": "/api/settings"
+    },
+    {
       "source": "/((?!api/|uploads/).*)",
       "destination": "/index.html"
     }

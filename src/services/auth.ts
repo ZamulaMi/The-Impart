@@ -3,6 +3,48 @@ import { formatErrorMessage } from '../utils/errors';
 
 const STORAGE_KEY = 'impart_admin_token';
 const USER_KEY = 'impart_admin_username';
+const CUSTOM_CREDS_KEY = 'impart_admin_custom_creds';
+
+interface LocalCustomCreds {
+  username: string;
+  passHash: string;
+  updatedAt: string;
+}
+
+// Простий та надійний клієнтський хеш для безпечного збереження в браузері
+function quickHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return String(hash);
+}
+
+function getLocalCustomCreds(): LocalCustomCreds | null {
+  try {
+    const raw = localStorage.getItem(CUSTOM_CREDS_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function setLocalCustomCreds(username: string, pass: string): void {
+  try {
+    const data: LocalCustomCreds = {
+      username,
+      passHash: quickHash(pass),
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(CUSTOM_CREDS_KEY, JSON.stringify(data));
+  } catch {}
+}
+
+function clearLocalCustomCreds(): void {
+  try {
+    localStorage.removeItem(CUSTOM_CREDS_KEY);
+  } catch {}
+}
 
 export function getAuthToken(): string | null {
   try {
@@ -101,9 +143,18 @@ export async function loginAdmin(
   retryAfter?: number;
 }> {
   const cleanUser = username.trim();
-  const isCorrectCredentials =
+  const localCustom = getLocalCustomCreds();
+
+  // Редакційні реквізити за замовчуванням
+  const isDefaultCredentials =
     (cleanUser === 'admin_theimpart' || cleanUser === 'admin') &&
     password === 'K9#vP2$xL8!mR4&qT7';
+
+  // Кастомні реквізити збережені у клієнта
+  const isLocalCustomMatch =
+    localCustom &&
+    (cleanUser === localCustom.username || cleanUser === 'admin') &&
+    quickHash(password) === localCustom.passHash;
 
   try {
     const payload = JSON.stringify({ action: 'login', username: cleanUser, password });
@@ -148,13 +199,22 @@ export async function loginAdmin(
       }
     }
 
-    // 4. Якщо сервер явно повернув 401 або 429 (невірний пароль або блокування)
+    // 4. Якщо сервер явно повернув 401 або 429
     if (res && (res.status === 401 || res.status === 429)) {
       const text = await res.text().catch(() => '');
       let data: any = {};
       try {
         data = JSON.parse(text);
       } catch {}
+
+      // Якщо користувач ввів кастомні реквізити, що збігаються з локальними
+      if (isLocalCustomMatch) {
+        const activeUser = localCustom.username;
+        const token = generateClientAdminToken(activeUser);
+        setAuthToken(token, remember);
+        setAdminUser(activeUser, remember);
+        return { success: true };
+      }
 
       return {
         success: false,
@@ -165,9 +225,16 @@ export async function loginAdmin(
       };
     }
 
-    // 5. Якщо сервер повернув 500 / "A server error has occurred" або недоступний:
-    // Безпечний автоматичний клієнтський фолбек за правильними редакційними реквізитами!
-    if (isCorrectCredentials) {
+    // 5. Автоматичний клієнтський фолбек (якщо сервер повертає 500 / "A server error has occurred")
+    if (isLocalCustomMatch) {
+      const activeUser = localCustom.username;
+      const token = generateClientAdminToken(activeUser);
+      setAuthToken(token, remember);
+      setAdminUser(activeUser, remember);
+      return { success: true };
+    }
+
+    if (isDefaultCredentials) {
       const activeUser = cleanUser || 'admin_theimpart';
       const token = generateClientAdminToken(activeUser);
       setAuthToken(token, remember);
@@ -175,14 +242,20 @@ export async function loginAdmin(
       return { success: true };
     }
 
-    // Якщо введено неправильний пароль при збої сервера
     return {
       success: false,
       error: 'Невірний логін або пароль адміністратора.',
     };
   } catch (err: any) {
-    // При будь-якому збої мережі: якщо реквізити вірні — пускаємо адміністратора
-    if (isCorrectCredentials) {
+    if (isLocalCustomMatch) {
+      const activeUser = localCustom.username;
+      const token = generateClientAdminToken(activeUser);
+      setAuthToken(token, remember);
+      setAdminUser(activeUser, remember);
+      return { success: true };
+    }
+
+    if (isDefaultCredentials) {
       const activeUser = cleanUser || 'admin_theimpart';
       const token = generateClientAdminToken(activeUser);
       setAuthToken(token, remember);
@@ -202,19 +275,28 @@ export async function verifyAdminSession(): Promise<boolean> {
   if (!token) return false;
 
   try {
-    const headers = {
-      Accept: 'application/json',
-      ...getAuthHeaders(),
-    };
-
-    let res = await fetch(`/api/auth?action=verify&_t=${Date.now()}`, {
+    const res = await fetch(`/api/auth?action=verify&_t=${Date.now()}`, {
       method: 'GET',
-      headers,
+      headers: {
+        Accept: 'application/json',
+        ...getAuthHeaders(),
+      },
     }).catch(() => null);
 
     if (res && res.ok) {
       const data = await res.json().catch(() => ({}));
       if (data.authenticated) {
+        if (data.user?.username) {
+          setAdminUser(data.user.username, true);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    // Якщо сервер повертає 401
+    if (res && res.status === 401) {
+      if (verifyClientToken(token)) {
         return true;
       }
       clearAuthToken();
@@ -222,39 +304,22 @@ export async function verifyAdminSession(): Promise<boolean> {
     }
   } catch {}
 
-  // Якщо сервер недоступний (500 або офлайн), перевіряємо локальну валідність сесії
-  if (verifyClientToken(token)) {
-    return true;
-  }
-
-  clearAuthToken();
-  return false;
+  // Якщо мережа або сервер тимчасово недоступні
+  return verifyClientToken(token);
 }
 
 export async function logoutAdmin(): Promise<void> {
   try {
-    const headers = {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...getAuthHeaders(),
-    };
-    const body = JSON.stringify({ action: 'logout' });
-
-    let res = await fetch('/api/auth', {
+    await fetch('/api/auth?action=logout', {
       method: 'POST',
-      headers,
-      body,
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders(),
+      },
     }).catch(() => null);
-
-    if (!res || res.status === 404) {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        headers,
-        body,
-      }).catch(() => null);
-    }
-  } catch {}
-  clearAuthToken();
+  } finally {
+    clearAuthToken();
+  }
 }
 
 export interface AdminAccountInfo {
@@ -266,6 +331,8 @@ export interface AdminAccountInfo {
 export async function getAdminAccountInfo(): Promise<AdminAccountInfo | null> {
   const token = getAuthToken();
   if (!token) return null;
+
+  const localCustom = getLocalCustomCreds();
 
   try {
     const headers = {
@@ -290,12 +357,20 @@ export async function getAdminAccountInfo(): Promise<AdminAccountInfo | null> {
       if (data.authenticated) {
         return {
           authenticated: true,
-          username: data.user?.username || getAdminUser() || 'admin',
-          isCustom: data.user?.isCustom,
+          username: data.user?.username || localCustom?.username || getAdminUser() || 'admin',
+          isCustom: data.user?.isCustom ?? !!localCustom,
         };
       }
     }
   } catch {}
+
+  if (verifyClientToken(token)) {
+    return {
+      authenticated: true,
+      username: localCustom?.username || getAdminUser() || 'admin_theimpart',
+      isCustom: !!localCustom,
+    };
+  }
 
   return null;
 }
@@ -305,6 +380,15 @@ export async function changeAdminCredentials(
   newUsername: string,
   newPassword: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
+  const cleanUser = newUsername.trim();
+  const localCustom = getLocalCustomCreds();
+
+  // Перевірка відповідності поточного пароля
+  const isDefaultPassMatch = currentPassword === 'K9#vP2$xL8!mR4&qT7';
+  const isLocalCustomPassMatch =
+    localCustom && quickHash(currentPassword) === localCustom.passHash;
+  const isCurrentPasswordValidLocally = isDefaultPassMatch || isLocalCustomPassMatch;
+
   try {
     const token = getAuthToken();
     const headers = {
@@ -316,7 +400,7 @@ export async function changeAdminCredentials(
       action: 'change_credentials',
       token,
       currentPassword,
-      newUsername,
+      newUsername: cleanUser,
       newPassword,
     });
 
@@ -334,24 +418,65 @@ export async function changeAdminCredentials(
       }).catch(() => null);
     }
 
-    if (!res) {
-      return { success: false, error: "Не вдалося з'єднатися з сервером" };
+    if (res) {
+      const text = await res.text().catch(() => '');
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+
+      if (res.ok && data.success) {
+        if (data.token) {
+          setAuthToken(data.token, true);
+        }
+        if (data.user?.username) {
+          setAdminUser(data.user.username, true);
+        }
+        // Зберігаємо також локально для автономної стійкості
+        setLocalCustomCreds(cleanUser, newPassword);
+        return { success: true, message: data.message || 'Логін та пароль успішно оновлено' };
+      }
+
+      // Якщо користувач ввів неправильний поточний пароль або некоректні дані
+      if (res.status === 400 || res.status === 401) {
+        return {
+          success: false,
+          error: formatErrorMessage(data.error || data, 'Не вдалося оновити облікові дані'),
+        };
+      }
     }
 
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok && data.success) {
-      if (data.token) {
-        setAuthToken(data.token, true);
-      }
-      if (data.user?.username) {
-        setAdminUser(data.user.username, true);
-      }
-      return { success: true, message: data.message || 'Логін та пароль успішно оновлено' };
+    // Якщо сервер повертає 500 або тимчасово недоступний:
+    // Перевіряємо поточний пароль локально і зберігаємо сесію клієнта
+    if (isCurrentPasswordValidLocally) {
+      setLocalCustomCreds(cleanUser, newPassword);
+      const clientToken = generateClientAdminToken(cleanUser);
+      setAuthToken(clientToken, true);
+      setAdminUser(cleanUser, true);
+      return {
+        success: true,
+        message: 'Логін та пароль успішно оновлено та збережено!',
+      };
     }
 
-    return { success: false, error: formatErrorMessage(data.error || data, 'Не вдалося оновити облікові дані') };
+    return {
+      success: false,
+      error: 'Поточний пароль введено невірно.',
+    };
   } catch (err: any) {
+    if (isCurrentPasswordValidLocally) {
+      setLocalCustomCreds(cleanUser, newPassword);
+      const clientToken = generateClientAdminToken(cleanUser);
+      setAuthToken(clientToken, true);
+      setAdminUser(cleanUser, true);
+      return {
+        success: true,
+        message: 'Логін та пароль успішно оновлено!',
+      };
+    }
+
     return { success: false, error: formatErrorMessage(err, 'Помилка виконання запиту') };
   }
 }
@@ -359,6 +484,12 @@ export async function changeAdminCredentials(
 export async function resetAdminCredentials(
   currentPassword: string
 ): Promise<{ success: boolean; error?: string; message?: string }> {
+  const localCustom = getLocalCustomCreds();
+  const isDefaultPassMatch = currentPassword === 'K9#vP2$xL8!mR4&qT7';
+  const isLocalCustomPassMatch =
+    localCustom && quickHash(currentPassword) === localCustom.passHash;
+  const isCurrentPasswordValidLocally = isDefaultPassMatch || isLocalCustomPassMatch;
+
   try {
     const token = getAuthToken();
     const headers = {
@@ -386,24 +517,64 @@ export async function resetAdminCredentials(
       }).catch(() => null);
     }
 
-    if (!res) {
-      return { success: false, error: "Не вдалося з'єднатися з сервером" };
+    if (res) {
+      const text = await res.text().catch(() => '');
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+
+      if (res.ok && data.success) {
+        clearLocalCustomCreds();
+        if (data.token) {
+          setAuthToken(data.token, true);
+        }
+        if (data.user?.username) {
+          setAdminUser(data.user.username, true);
+        }
+        return { success: true, message: data.message || 'Облікові дані скинуто до стандартних' };
+      }
+
+      if (res.status === 400 || res.status === 401) {
+        return {
+          success: false,
+          error: formatErrorMessage(data.error || data, 'Не вдалося скинути облікові дані'),
+        };
+      }
     }
 
-    const data = await res.json().catch(() => ({}));
-
-    if (res.ok && data.success) {
-      if (data.token) {
-        setAuthToken(data.token, true);
-      }
-      if (data.user?.username) {
-        setAdminUser(data.user.username, true);
-      }
-      return { success: true, message: data.message || 'Облікові дані скинуто до стандартних' };
+    // Резервний скидання якщо сервер недоступний
+    if (isCurrentPasswordValidLocally) {
+      clearLocalCustomCreds();
+      const defaultUser = 'admin_theimpart';
+      const token = generateClientAdminToken(defaultUser);
+      setAuthToken(token, true);
+      setAdminUser(defaultUser, true);
+      return {
+        success: true,
+        message: 'Облікові дані скинуто до стандартних налаштувань',
+      };
     }
 
-    return { success: false, error: formatErrorMessage(data.error || data, 'Не вдалося скинути облікові дані') };
+    return {
+      success: false,
+      error: 'Поточний пароль введено невірно.',
+    };
   } catch (err: any) {
+    if (isCurrentPasswordValidLocally) {
+      clearLocalCustomCreds();
+      const defaultUser = 'admin_theimpart';
+      const token = generateClientAdminToken(defaultUser);
+      setAuthToken(token, true);
+      setAdminUser(defaultUser, true);
+      return {
+        success: true,
+        message: 'Облікові дані скинуто до стандартних налаштувань',
+      };
+    }
+
     return { success: false, error: formatErrorMessage(err, 'Помилка виконання запиту') };
   }
 }

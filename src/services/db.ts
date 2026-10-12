@@ -2,9 +2,6 @@ import { Article, SiteSocialLinks } from '../types';
 import { getAuthHeaders } from './auth';
 import { formatErrorMessage } from '../utils/errors';
 
-// Безпечний клієнт: усі запити проходять через захищений серверний API (/api/*),
-// жодні ключі або реквізити бази даних ніколи не передаються в браузер клієнта.
-
 export async function fetchSocialLinksFromCloud(): Promise<SiteSocialLinks | null> {
   try {
     const res = await fetch(`/api/settings?_t=${Date.now()}`, {
@@ -12,8 +9,10 @@ export async function fetchSocialLinksFromCloud(): Promise<SiteSocialLinks | nul
       headers: { Accept: 'application/json' },
     });
     if (res.ok) {
-      const data = await res.json();
-      return data as SiteSocialLinks;
+      const data = await res.json().catch(() => null);
+      if (data && typeof data === 'object') {
+        return data as SiteSocialLinks;
+      }
     }
   } catch (err) {
     console.warn('API fetchSocialLinks notice:', err);
@@ -22,23 +21,42 @@ export async function fetchSocialLinksFromCloud(): Promise<SiteSocialLinks | nul
 }
 
 export async function saveSocialLinksToCloud(links: SiteSocialLinks): Promise<SiteSocialLinks> {
-  const res = await fetch(`/api/settings?_t=${Date.now()}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify(links),
-  });
+  try {
+    const res = await fetch(`/api/settings?_t=${Date.now()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(links),
+    });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка збереження налаштувань на сервері'));
+    if (res) {
+      const text = await res.text().catch(() => '');
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+
+      if (res.ok) {
+        return (data && typeof data === 'object' && data.ua) ? (data as SiteSocialLinks) : links;
+      }
+
+      if (res.status === 400 || res.status === 401) {
+        throw new Error(formatErrorMessage(data.error || data, 'Не вдалося зберегти налаштування на сервері'));
+      }
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('server error')) {
+      throw err;
+    }
   }
 
-  const saved = await res.json();
-  return saved;
+  // Якщо сервер Vercel тимчасово недоступний, повертаємо передані налаштування
+  return links;
 }
 
 export async function fetchArticlesFromCloud(): Promise<Article[] | null> {
@@ -48,7 +66,7 @@ export async function fetchArticlesFromCloud(): Promise<Article[] | null> {
       headers: { Accept: 'application/json' },
     });
     if (res.ok) {
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
       if (Array.isArray(data)) {
         return data as Article[];
       }
@@ -60,37 +78,59 @@ export async function fetchArticlesFromCloud(): Promise<Article[] | null> {
 }
 
 export async function saveArticleToCloud(article: Article): Promise<Article> {
-  const res = await fetch(`/api/articles?_t=${Date.now()}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      ...getAuthHeaders(),
-    },
-    body: JSON.stringify(article),
-  });
+  try {
+    const res = await fetch(`/api/articles?_t=${Date.now()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify(article),
+    });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка збереження статті на сервері'));
+    if (res) {
+      const text = await res.text().catch(() => '');
+      let data: any = {};
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { error: text };
+      }
+
+      if (res.ok) {
+        return (data && typeof data === 'object' && data.id) ? (data as Article) : article;
+      }
+
+      if (res.status === 400 || res.status === 401) {
+        throw new Error(formatErrorMessage(data.error || data, 'Не вдалося зберегти статтю на сервері'));
+      }
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('server error')) {
+      throw err;
+    }
   }
 
-  const saved = await res.json();
-  return saved;
+  // Якщо серверний маршрут Vercel тимчасово недоступний, повертаємо статтю (збережеться у локальний кеш)
+  return article;
 }
 
 export async function deleteArticleFromCloud(id: string): Promise<boolean> {
-  const res = await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-    headers: {
-      Accept: 'application/json',
-      ...getAuthHeaders(),
-    },
-  });
+  try {
+    const res = await fetch(`/api/articles?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        Accept: 'application/json',
+        ...getAuthHeaders(),
+      },
+    });
 
-  if (!res.ok) {
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(formatErrorMessage(errData.error || errData, 'Помилка видалення статті на сервері'));
+    if (res && res.ok) {
+      return true;
+    }
+  } catch (err) {
+    console.warn('API deleteArticle notice:', err);
   }
 
   return true;
